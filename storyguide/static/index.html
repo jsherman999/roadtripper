@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RoadTripper</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    >
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">RoadTripper</p>
+          <h1>RoadTripper</h1>
+        </div>
+        <div class="status-card">
+          <div class="status-row">
+            <span>Trip status</span>
+            <strong id="trip-status">Idle</strong>
+          </div>
+          <div class="status-row">
+            <span>Audio</span>
+            <strong id="audio-status">Ready</strong>
+          </div>
+          <div class="status-row">
+            <span>Current coords</span>
+            <strong id="coords-status">Waiting</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="controls panel">
+        <div class="control-grid">
+          <label>
+            Trip name
+            <input id="trip-name" value="Family Road Trip">
+          </label>
+          <label>
+            Narration mode
+            <select id="narration-mode">
+              <option value="storyteller">Storyteller</option>
+              <option value="quick">Quick Facts</option>
+              <option value="history">History</option>
+            </select>
+          </label>
+          <label>
+            Age band
+            <select id="age-band">
+              <option value="elementary">Elementary</option>
+              <option value="early_elementary">Early Elementary</option>
+              <option value="adult">Adult</option>
+            </select>
+          </label>
+          <label>
+            Data mode
+            <select id="data-mode">
+              <option value="live" selected>Live</option>
+              <option value="demo">Demo</option>
+            </select>
+          </label>
+          <label>
+            Voice
+            <select id="voice-select">
+              <option value="">Auto</option>
+            </select>
+          </label>
+          <label>
+            OpenRouter free model
+            <select id="llm-model-select">
+              <option value="">Default</option>
+            </select>
+          </label>
+          <label class="checkbox">
+            <input id="save-history" type="checkbox" checked>
+            Save searchable trip history
+          </label>
+          <label class="checkbox">
+            <input id="speak-aloud" type="checkbox" checked>
+            Speak narration through laptop speakers
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="start-trip">Start Trip</button>
+          <button id="stop-trip" disabled>Stop Trip</button>
+          <button id="refresh-history">Refresh History</button>
+          <button id="toggle-help" class="secondary-button" type="button">Help &amp; About</button>
+        </div>
+        <p class="hint">
+          Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.
+        </p>
+      </section>
+
+      <section id="help-panel" class="panel help-panel hidden" aria-hidden="true">
+        <div class="panel-head">
+          <div>
+            <p class="panel-label">Help &amp; About</p>
+            <h2>How to run and use RoadTripper</h2>
+          </div>
+        </div>
+        <div class="help-grid">
+          <article>
+            <h3>What it does</h3>
+            <p>
+              RoadTripper watches your browser's live location, identifies nearby towns and notable places, generates
+              short road trip commentary for children or adults, and can save each spoken item as searchable trip history.
+            </p>
+          </article>
+          <article>
+            <h3>Start the app</h3>
+            <p>
+              The backend runs locally at <code>http://127.0.0.1:8000</code>. You can run it manually from Terminal or
+              keep it running with the installed macOS LaunchAgent.
+            </p>
+            <pre><code>cd "/Users/jay/Documents/Playground 8"
+zsh ./deploy_storyguide.sh</code></pre>
+          </article>
+          <article>
+            <h3>First use</h3>
+            <p>
+              Enter a trip name, pick a narration mode and age band, choose whether to save history and speak aloud,
+              choose <strong>Live</strong> or <strong>Demo</strong> data mode, select a voice and optional free
+              OpenRouter model if you want, then click <strong>Start Trip</strong>. Allow location access when the browser asks.
+            </p>
+          </article>
+          <article>
+            <h3>Interface tour</h3>
+            <p>
+              <strong>Current place</strong> shows the nearest town and facts. <strong>Nearby towns</strong> tracks
+              towns near your last live location or map selection. <strong>Live narration</strong> shows spoken items, and <strong>Archive</strong>
+              searches saved commentary.
+            </p>
+          </article>
+          <article>
+            <h3>Useful commands</h3>
+            <pre><code>launchctl print gui/$(id -u)/com.jay.storyguide
+launchctl kickstart -k gui/$(id -u)/com.jay.storyguide
+launchctl bootout gui/$(id -u) /Users/jay/Library/LaunchAgents/com.jay.storyguide.plist</code></pre>
+          </article>
+          <article>
+            <h3>Data and logs</h3>
+            <p>
+              The LaunchAgent runtime lives in <code>/Users/jay/.storyguide</code>. Logs are written to
+              <code>storyguide.stdout.log</code> and <code>storyguide.stderr.log</code> in that folder.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <article class="panel">
+          <p class="panel-label">Current place</p>
+          <h2 id="current-place-name">No active trip</h2>
+          <p id="current-place-details">Start a trip to see the latest nearby town.</p>
+        </article>
+        <article class="panel accent">
+          <p class="panel-label">Nearby towns</p>
+          <h2 id="upcoming-name">No nearby towns yet</h2>
+          <p id="upcoming-details">Tap a town to hear it now, or keep driving and it will be narrated when you get near it.</p>
+          <div id="nearby-town-list" class="nearby-town-list"></div>
+        </article>
+      </section>
+
+      <section class="panel map-panel">
+        <div class="panel-head">
+          <div>
+            <p class="panel-label">Map</p>
+            <h2>Live trip map</h2>
+          </div>
+          <p class="microcopy">Click the map or a marker to narrate that location and add it to the trip.</p>
+        </div>
+        <div id="trip-map" class="trip-map" aria-label="Live trip map"></div>
+      </section>
+
+      <section class="feed-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Live narration</p>
+              <h2>Trip feed</h2>
+            </div>
+            <p id="decision-reason" class="microcopy">No narration yet.</p>
+          </div>
+          <div id="feed" class="feed-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-label">Archive</p>
+              <h2>Search trip notes</h2>
+            </div>
+          </div>
+          <div class="search-row">
+            <input id="search-query" placeholder="Search towns, history, landmarks">
+            <button id="search-button">Search</button>
+          </div>
+          <div id="history-results" class="history-list"></div>
+        </article>
+      </section>
+    </main>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

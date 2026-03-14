@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.jay.storyguide</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/Applications/Xcode.app/Contents/Developer/usr/bin/python3</string>
+      <string>/Users/jay/.storyguide/main.py</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PYTHONPYCACHEPREFIX</key>
+      <string>/Users/jay/.storyguide/.pycache</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jay/.storyguide</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jay/.storyguide/storyguide.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/jay/.storyguide/storyguide.stderr.log</string>
+  </dict>
+</plist>

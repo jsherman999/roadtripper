@@ -1,0 +1,8 @@
+.env
+.pycache/
+__pycache__/
+*.pyc
+storyguide.sqlite3
+storyguide.stdout.log
+storyguide.stderr.log
+.DS_Store
