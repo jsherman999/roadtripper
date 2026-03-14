@@ -10,6 +10,7 @@ This project includes:
 - A deploy script for syncing workspace code to the `launchd` runtime copy
 - Optional LLM-backed narration via provider abstractions
 - Optional dedicated OpenAI TTS playback
+- A separate native SwiftUI iOS scaffold under `ios/`
 
 ## Files
 - App entry point: [main.py](/Users/jay/Documents/Playground%208/main.py)
@@ -20,6 +21,8 @@ This project includes:
 - LLM env example: [.env.example](/Users/jay/Documents/Playground%208/.env.example)
 - Product plan: [ROAD_TRIP_COMMENTARY_APP_PLAN.md](/Users/jay/Documents/Playground%208/ROAD_TRIP_COMMENTARY_APP_PLAN.md)
 - Technical spec: [ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md](/Users/jay/Documents/Playground%208/ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md)
+- iOS plan: [ROADTRIPPER_IOS_PLAN.md](/Users/jay/Documents/Playground%208/ROADTRIPPER_IOS_PLAN.md)
+- iOS scaffold guide: [ios/README.md](/Users/jay/Documents/Playground%208/ios/README.md)
 
 ## Requirements
 - macOS
@@ -28,6 +31,22 @@ This project includes:
   - Geolocation support
   - Speech synthesis support
 - Internet connectivity during use if you want live web enrichment later
+
+## Native iOS Scaffold
+The repository now also includes a separate native SwiftUI scaffold at:
+- [ios/RoadTripperIOS.xcodeproj](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS.xcodeproj)
+- [ios/RoadTripperIOS/RoadTripperRootView.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperRootView.swift)
+- [ios/RoadTripperIOS/RoadTripperServices.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperServices.swift)
+- [ios/RoadTripperIOS/RoadTripperLLM.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperLLM.swift)
+
+Open it with:
+
+```bash
+open "/Users/jay/Documents/Playground 8/ios/RoadTripperIOS.xcodeproj"
+```
+
+The iOS app is a parallel client. It does not replace or modify the Python/web version.
+The iOS scaffold now includes an immersive dark map-first layout, a native settings screen with provider selection, model selection, Keychain-backed API key storage, OpenAI TTS voice playback, and an Embarrass, Minnesota simulator fallback startup. See [ios/README.md](/Users/jay/Documents/Playground%208/ios/README.md) for setup.
 
 ## How The App Works
 1. The Python server runs locally on `http://127.0.0.1:8000`.
