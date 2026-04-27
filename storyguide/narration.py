@@ -1,9 +1,16 @@
+import re
+
 SENSITIVE_WORDS = {
     "murder": "hard history",
     "crime": "serious history",
     "violent": "dramatic",
     "tragedy": "challenging moment",
 }
+
+_PLACE_IS_A_RE = re.compile(
+    r"^\s*(it\s+)?is\s+a\s+(city|town|village|hamlet|community|census-designated\s+place|unincorporated\s+community)\s+(in|located\s+in)\s+",
+    re.IGNORECASE,
+)
 
 
 def sanitize_text(text: str) -> str:
@@ -14,6 +21,10 @@ def sanitize_text(text: str) -> str:
     return clean
 
 
+def _is_generic_place_description(text: str) -> bool:
+    return bool(_PLACE_IS_A_RE.search(text))
+
+
 class NarrationBuilder:
     def build_current_place_script(self, place, nearby, mode: str = "storyteller", age_band: str = "elementary"):
         if age_band == "adult":
@@ -21,11 +32,11 @@ class NarrationBuilder:
             bits = ["We are near %s, %s." % (place.name, place.region)]
             if place.population:
                 bits.append("The population is about {:,}.".format(place.population))
-            if place.known_for:
+            if place.known_for and not _is_generic_place_description(place.known_for):
                 bits.append("%s is known for %s." % (place.name, sanitize_text(place.known_for)))
-            if mode == "history" and place.history:
+            if mode == "history" and place.history and not _is_generic_place_description(place.history):
                 bits.append("Historical context: %s." % sanitize_text(place.history))
-            elif place.history:
+            elif place.history and not _is_generic_place_description(place.history):
                 bits.append("Background: %s." % sanitize_text(place.history))
             if place.high_school_enrollment:
                 bits.append("A local high school enrolls roughly {:,} students.".format(place.high_school_enrollment))
@@ -39,11 +50,11 @@ class NarrationBuilder:
             bits = ["We are near %s, %s." % (place.name, place.region)]
             if place.population:
                 bits.append("About {:,} people live here.".format(place.population))
-            if place.known_for:
+            if place.known_for and not _is_generic_place_description(place.known_for):
                 bits.append("%s is known for %s." % (place.name, sanitize_text(place.known_for)))
-            if mode == "history" and place.history:
+            if mode == "history" and place.history and not _is_generic_place_description(place.history):
                 bits.append("A quick history note: %s." % sanitize_text(place.history))
-            elif place.history:
+            elif place.history and not _is_generic_place_description(place.history):
                 bits.append("Fun history note: %s." % sanitize_text(place.history))
             if place.high_school_enrollment:
                 bits.append("One local high school serves about {:,} students.".format(place.high_school_enrollment))

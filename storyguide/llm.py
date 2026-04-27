@@ -154,14 +154,39 @@ def _system_prompt(context: Dict) -> str:
         tone = "friendly, age-appropriate, and fun for children"
     return (
         "You write short location-aware road trip narration. "
-        "Stay factual, do not invent facts beyond the provided context, and keep it to 2-5 concise sentences. "
+        "You will receive a Raw Wikipedia Extract field containing the full Wikipedia summary for this place. "
+        "Mine it aggressively for specific, concrete facts. "
+        "Prioritize: population numbers, founding year, notable people born here, "
+        "historical events, what the town is known for economically or culturally, "
+        "nearby attractions, geographic features, and local trivia. "
+        "If the raw extract contains detailed information, use it — do not summarize vaguely. "
+        "Lead with the most interesting, surprising, or specific fact first. "
+        "If a field in the structured context is null or empty, skip it entirely — do not invent or generalize. "
+        "Keep narration to 2-5 concise sentences. "
         "Use a tone that is %s." % tone
     )
 
 
 def _build_prompt(fallback_script: str, context: Dict) -> str:
+    place = context.get("place", {})
+    raw = place.get("raw_extract", "") if place else ""
+    if not raw:
+        kind = context.get("kind", "")
+        if kind == "selected_point":
+            raw = context.get("blurb", "")
+        elif kind == "current_place":
+            for p in [context.get("place", {})]:
+                raw = p.get("raw_extract", "")
+    if raw:
+        raw_section = "\n\nRaw Wikipedia Extract (mine this for specific facts):\n%s" % raw
+    else:
+        raw_section = ""
     return (
-        "Improve this fallback narration without inventing unsupported facts.\n\n"
+        "Rewrite this road trip narration to highlight specific, concrete facts. "
+        "Extract numbers, names, dates, and specific details from the Raw Wikipedia Extract provided. "
+        "Do NOT just paraphrase the raw text — pick the most interesting specific facts. "
+        "Skip any topic where data is missing. "
+        "Do not add filler like \"a small town with its own character\" when you have no facts.\n\n"
         "Fallback script:\n%s\n\n"
-        "Context JSON:\n%s\n" % (fallback_script, json.dumps(context, sort_keys=True))
+        "Structured Context JSON:\n%s%s\n" % (fallback_script, json.dumps(context, sort_keys=True), raw_section)
     )

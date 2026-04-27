@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -8,6 +9,57 @@ from typing import Dict, Iterable, List, Optional
 
 from storyguide.models import NearbyPlace, PlaceProfile
 from storyguide.relevance import haversine_km
+
+
+_POPULATION_PATTERNS = [
+    re.compile(
+        r"(?:the\s+)?population\s+(?:was|of|is)\s+([\d,]+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:recorded|estimated)\s+a?\s*population\s+(?:of|at)\s+([\d,]+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"([\d,]+)\s+(?:people|residents|inhabitants)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"had\s+a\s+population\s+of\s+([\d,]+)",
+        re.IGNORECASE,
+    ),
+]
+
+_PLACE_IS_A_PATTERN = re.compile(
+    r"^\s*(it\s+)?is\s+a\s+(city|town|village|hamlet|community|census-designated\s+place|unincorporated\s+community)\s+(in|located\s+in)\s+",
+    re.IGNORECASE,
+)
+
+_HISTORY_SIGNALS = re.compile(
+    r"\b(founded|established|settled|incorporated|named\s+after|platted|chartered|first\s+settl|originally|built\s+in)\b",
+    re.IGNORECASE,
+)
+
+_YEAR_PATTERN = re.compile(r"\b(1[6-9]\d{2}|20[0-2]\d)\b")
+
+
+def _extract_population(text: str) -> Optional[int]:
+    for pattern in _POPULATION_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                return int(match.group(1).replace(",", ""))
+            except (ValueError, IndexError):
+                continue
+    return None
+
+
+def _is_place_is_a_fragment(fragment: str) -> bool:
+    return bool(_PLACE_IS_A_PATTERN.search(fragment))
+
+
+def _is_history_fragment(fragment: str) -> bool:
+    return bool(_HISTORY_SIGNALS.search(fragment)) and bool(_YEAR_PATTERN.search(fragment))
 
 
 CATALOG = [
@@ -133,7 +185,7 @@ class DemoPlaceProvider:
 
 
 class LiveWikipediaSummaryProvider:
-    def fetch_summary(self, title: str) -> Optional[str]:
+    def fetch_summary(self, title: str) -> Optional[Dict]:
         encoded = urllib.parse.quote(title)
         url = "https://en.wikipedia.org/api/rest_v1/page/summary/%s" % encoded
         request = urllib.request.Request(url, headers={"User-Agent": "RoadTripStoryguide/1.0"})
@@ -142,7 +194,10 @@ class LiveWikipediaSummaryProvider:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
             return None
-        return payload.get("extract")
+        return {
+            "extract": payload.get("extract") or "",
+            "description": payload.get("description") or "",
+        }
 
 
 class LivePlaceProvider:
@@ -306,24 +361,47 @@ class LivePlaceProvider:
 
     def enrich(self, place: PlaceProfile) -> PlaceProfile:
         try:
-            summary = self.summary_provider.fetch_summary("%s, %s" % (place.name, place.region))
+            summary_data = self.summary_provider.fetch_summary("%s, %s" % (place.name, place.region))
         except OSError:
             return place
-        if not summary:
+        if not summary_data:
             try:
-                summary = self.summary_provider.fetch_summary(place.name)
+                summary_data = self.summary_provider.fetch_summary(place.name)
             except OSError:
                 return place
-        if not summary:
+        if not summary_data:
             return place
-        fragments = [fragment.strip() for fragment in summary.split(".") if fragment.strip()]
-        history = place.history
-        known_for = place.known_for
+        extract = summary_data.get("extract", "")
+        description = summary_data.get("description", "")
+        place = replace(place, raw_extract=extract)
+        population = _extract_population(extract) or place.population
+        fragments = [fragment.strip() for fragment in extract.split(".") if fragment.strip()]
+        known_for = ""
+        history = ""
         trivia = list(place.trivia)
-        if fragments:
-            known_for = known_for or fragments[0]
-        if len(fragments) > 1 and not history:
-            history = fragments[1]
-        if len(fragments) > 2 and not trivia:
-            trivia = [fragments[2]]
-        return replace(place, known_for=known_for, history=history, trivia=trivia, source="live")
+        non_population_fragments = []
+        for fragment in fragments:
+            if _is_place_is_a_fragment(fragment):
+                continue
+            if _extract_population(fragment) is not None:
+                continue
+            non_population_fragments.append(fragment)
+        for fragment in non_population_fragments:
+            if not history and _is_history_fragment(fragment):
+                history = fragment
+            elif not known_for and len(fragment) > 30:
+                known_for = fragment
+            elif len(trivia) < 3 and len(fragment) > 20:
+                trivia.append(fragment)
+        if not known_for and description and not _is_place_is_a_fragment(description):
+            known_for = description
+        known_for = known_for or place.known_for
+        history = history or place.history
+        return replace(
+            place,
+            population=population,
+            known_for=known_for,
+            history=history,
+            trivia=trivia,
+            source="live",
+        )

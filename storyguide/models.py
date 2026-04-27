@@ -54,6 +54,7 @@ class PlaceProfile:
     high_school_enrollment: Optional[int] = None
     landmarks: List[str] = field(default_factory=list)
     trivia: List[str] = field(default_factory=list)
+    raw_extract: str = ""
     source: str = "demo"
     confidence: float = 0.85
 
@@ -70,6 +71,7 @@ class PlaceProfile:
             "high_school_enrollment": self.high_school_enrollment,
             "landmarks": list(self.landmarks),
             "trivia": list(self.trivia),
+            "raw_extract": self.raw_extract,
             "source": self.source,
             "confidence": self.confidence,
         }
