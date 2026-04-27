@@ -541,16 +541,47 @@ async function loadFreeModels() {
   const select = byId("llm-model-select");
   const stored = getStoredLlmModel();
   const data = await requestJson("/api/llm/free-models");
-  select.innerHTML = `<option value="">Default</option>`;
+  const defaultLabel = data.default_model
+    ? `Default (${data.default_model})`
+    : "Default";
+  select.innerHTML = `<option value="">${defaultLabel}</option>`;
+  const openrouterModels = [];
+  const openaiModels = [];
   (data.models || []).forEach((model) => {
-    const option = document.createElement("option");
-    option.value = model.id;
-    option.textContent = model.name;
-    if (model.id === stored) {
-      option.selected = true;
+    if (model.id.startsWith("openai:")) {
+      openaiModels.push(model);
+    } else {
+      openrouterModels.push(model);
     }
-    select.appendChild(option);
   });
+  if (openrouterModels.length) {
+    const group = document.createElement("optgroup");
+    group.label = "OpenRouter";
+    openrouterModels.forEach((model) => {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.name;
+      if (model.id === stored) {
+        option.selected = true;
+      }
+      group.appendChild(option);
+    });
+    select.appendChild(group);
+  }
+  if (openaiModels.length) {
+    const group = document.createElement("optgroup");
+    group.label = "OpenAI";
+    openaiModels.forEach((model) => {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.name;
+      if (model.id === stored) {
+        option.selected = true;
+      }
+      group.appendChild(option);
+    });
+    select.appendChild(group);
+  }
 }
 
 async function loadTtsOptions() {

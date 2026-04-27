@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env
+from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_openai_provider_from_env
 from storyguide.models import TripSettings
 from storyguide.narration import NarrationBuilder
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
@@ -21,6 +21,7 @@ class StoryGuideService:
         route_forecaster: Optional[RouteForecaster] = None,
         llm_provider: Optional[BaseNarrationLLM] = None,
         tts_provider: Optional[BaseTTSProvider] = None,
+        openai_provider: Optional[BaseNarrationLLM] = None,
     ):
         self.storage = storage or Storage()
         self.demo_provider = demo_provider or DemoPlaceProvider()
@@ -30,6 +31,7 @@ class StoryGuideService:
         self.route_forecaster = route_forecaster or RouteForecaster()
         self.llm_provider = llm_provider or build_llm_provider_from_env()
         self.tts_provider = tts_provider or build_tts_provider_from_env()
+        self.openai_provider = openai_provider if openai_provider is not None else build_openai_provider_from_env()
 
     def create_trip(self, name: str, settings_payload: Optional[Dict] = None) -> Dict:
         settings = TripSettings.from_dict(settings_payload)
@@ -55,9 +57,13 @@ class StoryGuideService:
         return self.storage.export_trip_markdown(trip_id)
 
     def llm_free_models(self) -> Dict:
+        models = list(self.llm_provider.list_free_models())
+        if self.openai_provider and self.openai_provider.api_key:
+            models.extend(self.openai_provider.list_free_models())
         return {
             "provider": getattr(self.llm_provider, "provider_name", "none"),
-            "models": self.llm_provider.list_free_models(),
+            "default_model": self.llm_provider.default_model,
+            "models": models,
         }
 
     def tts_options(self) -> Dict:
@@ -234,5 +240,11 @@ class StoryGuideService:
         }
 
     def _maybe_llm_narrate(self, fallback_script: str, context: Dict, model_override: str = "") -> str:
-        llm_script = self.llm_provider.generate_narration(fallback_script, context, model_override=model_override)
+        if model_override.startswith("openai:") and self.openai_provider:
+            model = model_override[7:]
+            llm_script = self.openai_provider.generate_narration(fallback_script, context, model_override=model)
+        elif model_override.startswith("openai:"):
+            llm_script = self.llm_provider.generate_narration(fallback_script, context)
+        else:
+            llm_script = self.llm_provider.generate_narration(fallback_script, context, model_override=model_override)
         return llm_script or fallback_script

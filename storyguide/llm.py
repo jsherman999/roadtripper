@@ -14,6 +14,10 @@ class BaseNarrationLLM:
     def list_free_models(self) -> List[Dict]:
         return []
 
+    @property
+    def default_model(self) -> str:
+        return ""
+
 
 class NoOpNarrationLLM(BaseNarrationLLM):
     pass
@@ -25,6 +29,10 @@ class OpenRouterNarrationLLM(BaseNarrationLLM):
     def __init__(self, api_key: str, model: str):
         self.api_key = api_key
         self.model = model
+
+    @property
+    def default_model(self) -> str:
+        return self.model
 
     def generate_narration(self, fallback_script: str, context: Dict, model_override: str = "") -> Optional[str]:
         prompt = _build_prompt(fallback_script, context)
@@ -96,6 +104,10 @@ class OpenAINarrationLLM(BaseNarrationLLM):
         self.api_key = api_key
         self.model = model
 
+    @property
+    def default_model(self) -> str:
+        return self.model
+
     def generate_narration(self, fallback_script: str, context: Dict, model_override: str = "") -> Optional[str]:
         payload = {
             "model": model_override or self.model,
@@ -127,6 +139,34 @@ class OpenAINarrationLLM(BaseNarrationLLM):
                     return content["text"].strip()
         return None
 
+    def list_models(self) -> List[Dict]:
+        request = urllib.request.Request(
+            "https://api.openai.com/v1/models",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer %s" % self.api_key,
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
+            return []
+        models = []
+        preferred = {"gpt-5", "gpt-4.1", "gpt-4o", "o4-mini"}
+        exclude = {"audio", "realtime", "search", "transcribe", "tts", "diarize"}
+        for item in body.get("data", []):
+            model_id = item.get("id", "")
+            if any(p in model_id for p in exclude):
+                continue
+            if any(model_id.startswith(p) for p in preferred):
+                models.append({"id": "openai:%s" % model_id, "name": "%s (OpenAI)" % model_id})
+        models.sort(key=lambda m: m["id"])
+        return models
+
+    def list_free_models(self) -> List[Dict]:
+        return self.list_models()
+
 
 def build_llm_provider_from_env(env: Optional[Dict[str, str]] = None) -> BaseNarrationLLM:
     env = env or os.environ
@@ -142,6 +182,15 @@ def build_llm_provider_from_env(env: Optional[Dict[str, str]] = None) -> BaseNar
         if api_key:
             return OpenAINarrationLLM(api_key=api_key, model=model)
     return NoOpNarrationLLM()
+
+
+def build_openai_provider_from_env(env: Optional[Dict[str, str]] = None) -> Optional[OpenAINarrationLLM]:
+    env = env or os.environ
+    api_key = env.get("ROADTRIPPER_OPENAI_API_KEY", "").strip()
+    if api_key:
+        model = env.get("ROADTRIPPER_LLM_OPENAI_MODEL", "gpt-4o-mini")
+        return OpenAINarrationLLM(api_key=api_key, model=model)
+    return None
 
 
 def _system_prompt(context: Dict) -> str:
