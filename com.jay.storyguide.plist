@@ -7,8 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/Applications/Xcode.app/Contents/Developer/usr/bin/python3</string>
-      <string>/Users/jay/.storyguide/main.py</string>
+      <string>/opt/homebrew/bin/python3</string>
+      <string>/Users/jay/opencode/roadtripper/main.py</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -18,7 +18,7 @@
     </dict>
 
     <key>WorkingDirectory</key>
-    <string>/Users/jay/.storyguide</string>
+    <string>/Users/jay/opencode/roadtripper</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -27,9 +27,9 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/jay/.storyguide/storyguide.stdout.log</string>
+    <string>/Users/jay/opencode/roadtripper/storyguide.stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/jay/.storyguide/storyguide.stderr.log</string>
+    <string>/Users/jay/opencode/roadtripper/storyguide.stderr.log</string>
   </dict>
 </plist>
