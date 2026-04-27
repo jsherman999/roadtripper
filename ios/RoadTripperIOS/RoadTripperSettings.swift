@@ -155,9 +155,9 @@ final class RoadTripperLLMSettingsStore: ObservableObject {
     }
 
     static let openAIModelOptions: [LLMModelOption] = [
-        .init(id: "gpt-4.1-mini", name: "gpt-4.1-mini"),
-        .init(id: "gpt-4.1", name: "gpt-4.1"),
-        .init(id: "gpt-4o-mini", name: "gpt-4o-mini"),
+        .init(id: "gpt-5.4-mini", name: "gpt-5.4-mini"),
+        .init(id: "gpt-5.4", name: "gpt-5.4"),
+        .init(id: "gpt-5.5", name: "gpt-5.5"),
     ]
 }
 

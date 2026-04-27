@@ -46,9 +46,9 @@ struct RoadTripperLLMConfiguration: Equatable {
         case .none:
             return ""
         case .openai:
-            return "gpt-4.1-mini"
+            return "gpt-5.4-mini"
         case .openrouter:
-            return "openai/gpt-4.1-mini"
+            return "openai/gpt-5.4-mini"
         }
     }
 }
@@ -256,11 +256,11 @@ enum RoadTripperLLMProviderFactory {
         switch configuration.provider {
         case .openai:
             guard !configuration.openAIAPIKey.isEmpty else { return NoOpNarrationLLMProvider() }
-            let model = configuration.model.isEmpty ? "gpt-4.1-mini" : configuration.model
+            let model = configuration.model.isEmpty ? "gpt-5.4-mini" : configuration.model
             return OpenAINarrationLLMProvider(apiKey: configuration.openAIAPIKey, model: model)
         case .openrouter:
             guard !configuration.openRouterAPIKey.isEmpty else { return NoOpNarrationLLMProvider() }
-            let model = configuration.model.isEmpty ? "openai/gpt-4.1-mini" : configuration.model
+            let model = configuration.model.isEmpty ? "openai/gpt-5.4-mini" : configuration.model
             return OpenRouterNarrationLLMProvider(apiKey: configuration.openRouterAPIKey, model: model)
         case .none:
             return NoOpNarrationLLMProvider()

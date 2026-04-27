@@ -133,12 +133,12 @@ def build_llm_provider_from_env(env: Optional[Dict[str, str]] = None) -> BaseNar
     provider = env.get("ROADTRIPPER_LLM_PROVIDER", "").strip().lower()
     if provider == "openrouter":
         api_key = env.get("ROADTRIPPER_OPENROUTER_API_KEY", "").strip()
-        model = env.get("ROADTRIPPER_LLM_MODEL", "openai/gpt-4.1-mini")
+        model = env.get("ROADTRIPPER_LLM_MODEL", "openai/gpt-5.4-mini")
         if api_key:
             return OpenRouterNarrationLLM(api_key=api_key, model=model)
     if provider == "openai":
         api_key = env.get("ROADTRIPPER_OPENAI_API_KEY", "").strip()
-        model = env.get("ROADTRIPPER_LLM_MODEL", "gpt-4.1-mini")
+        model = env.get("ROADTRIPPER_LLM_MODEL", "gpt-5.4-mini")
         if api_key:
             return OpenAINarrationLLM(api_key=api_key, model=model)
     return NoOpNarrationLLM()
