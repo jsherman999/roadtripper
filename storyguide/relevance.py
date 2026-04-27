@@ -55,6 +55,16 @@ class RelevanceEngine:
             return False, score, "score_below_threshold"
         if not last_event:
             return True, score, "first_event"
+        if last_event.get("trigger_type") == "selected_place":
+            moved_km = haversine_km(
+                current_latitude,
+                current_longitude,
+                float(last_event["latitude"]),
+                float(last_event["longitude"]),
+            )
+            if moved_km < trip_settings.minimum_distance_km:
+                return False, score, "cooldown_after_manual_selection"
+            return True, score, "moved_past_manual_selection"
         if last_event["place_name"] == place.name:
             moved_km = haversine_km(
                 current_latitude,

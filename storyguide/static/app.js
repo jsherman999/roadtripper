@@ -14,6 +14,7 @@ const state = {
   audioGeneration: 0,
   currentAudio: null,
   ttsProvider: "browser",
+  userNarrationActive: false,
 };
 
 function byId(id) {
@@ -51,9 +52,10 @@ function setStoredLlmModel(modelId) {
   }
 }
 
-async function speak(script) {
+async function speak(script, onEnd) {
   if (!state.speakAloud) {
     setText("audio-status", "Muted");
+    if (onEnd) onEnd();
     return;
   }
   const generation = ++state.audioGeneration;
@@ -71,13 +73,18 @@ async function speak(script) {
       body: JSON.stringify({ text: script, voice: selectedVoice }),
     });
     if (generation !== state.audioGeneration) {
+      if (onEnd) onEnd();
       return;
     }
     if (!data.fallback && data.audio_base64) {
       const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
       state.currentAudio = audio;
+      if (onEnd) {
+        audio.addEventListener("ended", onEnd, { once: true });
+      }
       audio.play().catch(() => {
         setText("audio-status", "Audio blocked");
+        if (onEnd) onEnd();
       });
       setText("audio-status", data.voice ? `Speaking (${data.voice})` : "Speaking");
       return;
@@ -85,6 +92,7 @@ async function speak(script) {
   }
   if (!("speechSynthesis" in window)) {
     setText("audio-status", "No audio provider");
+    if (onEnd) onEnd();
     return;
   }
   const utterance = new SpeechSynthesisUtterance(script);
@@ -94,6 +102,9 @@ async function speak(script) {
   }
   utterance.rate = 0.95;
   utterance.pitch = 1.05;
+  if (onEnd) {
+    utterance.onend = onEnd;
+  }
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
   setText("audio-status", voice ? `Speaking (${voice.name})` : "Speaking");
@@ -324,7 +335,11 @@ async function narrateTownNow(town) {
   });
   if (data.event) {
     appendFeed(data.event);
-    speak(data.event.script);
+    state.userNarrationActive = true;
+    speak(data.event.script, () => {
+      state.userNarrationActive = false;
+    });
+    setTimeout(() => { state.userNarrationActive = false; }, 60000);
     renderNearbyContext(data);
     renderMap(data, {
       latitude: data.selected_place.latitude,
@@ -353,7 +368,11 @@ async function narrateMapLocation(location) {
   });
   if (data.event) {
     appendFeed(data.event);
-    speak(data.event.script);
+    state.userNarrationActive = true;
+    speak(data.event.script, () => {
+      state.userNarrationActive = false;
+    });
+    setTimeout(() => { state.userNarrationActive = false; }, 60000);
     renderNearbyContext(data);
     renderMap(data, {
       latitude: data.selected_place.latitude,
@@ -437,7 +456,9 @@ async function handleLocation(position) {
   setText("decision-reason", data.decision.reason.replace(/_/g, " "));
   if (data.event) {
     appendFeed(data.event);
-    speak(data.event.script);
+    if (!state.userNarrationActive) {
+      speak(data.event.script);
+    }
     highlightDiscoveredPlace(
       {
         name: data.event.place_name,
