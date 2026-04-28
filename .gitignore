@@ -3,8 +3,11 @@
 __pycache__/
 *.pyc
 storyguide.sqlite3
+storyguide.sqlite3-shm
+storyguide.sqlite3-wal
 storyguide.stdout.log
 storyguide.stderr.log
+session-ses_*.md
 .DS_Store
 xcuserdata/
 *.xcuserstate
