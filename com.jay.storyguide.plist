@@ -9,6 +9,8 @@
     <array>
       <string>/opt/homebrew/bin/python3</string>
       <string>/Users/jay/opencode/roadtripper/main.py</string>
+      <string>--port</string>
+      <string>8001</string>
     </array>
 
     <key>EnvironmentVariables</key>

@@ -37,5 +37,5 @@ echo
 echo "Storyguide deployed."
 echo "LaunchAgent: $PLIST_LABEL"
 echo "App directory: $APP_DIR"
-echo "URL: http://127.0.0.1:8000"
+echo "URL: http://127.0.0.1:8001"
 echo "Status command: launchctl print gui/$(id -u)/$PLIST_LABEL"

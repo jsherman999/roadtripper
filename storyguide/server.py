@@ -165,10 +165,10 @@ def create_app(db_path: str = "storyguide.sqlite3") -> StoryGuideHTTPServer:
     load_dotenv()
     storage = Storage(path=db_path)
     service = StoryGuideService(storage=storage)
-    return StoryGuideHTTPServer(("127.0.0.1", 8000), RequestHandler, service)
+    return StoryGuideHTTPServer(("127.0.0.1", 8001), RequestHandler, service)
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8000, db_path: str = "storyguide.sqlite3"):
+def run_server(host: str = "127.0.0.1", port: int = 8001, db_path: str = "storyguide.sqlite3"):
     load_dotenv()
     storage = Storage(path=db_path)
     service = StoryGuideService(storage=storage)

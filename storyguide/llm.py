@@ -51,7 +51,7 @@ class OpenRouterNarrationLLM(BaseNarrationLLM):
             headers={
                 "Content-Type": "application/json",
                 "Authorization": "Bearer %s" % self.api_key,
-                "HTTP-Referer": "http://127.0.0.1:8000",
+                "HTTP-Referer": "http://127.0.0.1:8001",
                 "X-Title": "RoadTripper",
             },
         )
@@ -69,7 +69,7 @@ class OpenRouterNarrationLLM(BaseNarrationLLM):
     def list_free_models(self) -> List[Dict]:
         request = urllib.request.Request(
             "https://openrouter.ai/api/v1/models",
-            headers={"HTTP-Referer": "http://127.0.0.1:8000", "X-Title": "RoadTripper"},
+            headers={"HTTP-Referer": "http://127.0.0.1:8001", "X-Title": "RoadTripper"},
         )
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
