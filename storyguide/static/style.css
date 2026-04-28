@@ -275,6 +275,50 @@ small {
   margin-top: 12px;
 }
 
+.itinerary-panel {
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.itinerary-panel summary {
+  cursor: pointer;
+  color: var(--sea);
+  font-weight: 700;
+}
+
+.itinerary-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.itinerary-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid #94a3b8;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.86);
+}
+
+.itinerary-item.status-researching {
+  border-left-color: #ef4444;
+}
+
+.itinerary-item.status-done {
+  border-left-color: #22c55e;
+}
+
+.itinerary-item.status-failed {
+  border-left-color: #facc15;
+}
+
 .waypoint-item {
   display: grid;
   grid-template-columns: minmax(80px, 0.8fr) minmax(160px, 1fr) auto;
@@ -432,7 +476,8 @@ small {
   .control-grid,
   .settings-grid,
   .help-grid,
-  .waypoint-item {
+  .waypoint-item,
+  .itinerary-item {
     grid-template-columns: 1fr;
   }
 

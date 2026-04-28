@@ -24,6 +24,7 @@ const state = {
   plotRouteLine: null,
   plotTownMarkers: [],
   plotPollTimer: null,
+  plotRoute: null,
 };
 
 function detectPlatform() {
@@ -222,7 +223,7 @@ function ensureMap() {
     plotTowns: L.layerGroup().addTo(state.map),
   };
   state.map.on("click", (event) => {
-    if (state.tripMode === "plot_trip" && state.tripId) {
+    if (state.tripMode === "plot_trip") {
       addPlotWaypoint(event.latlng.lat, event.latlng.lng);
       return;
     }
@@ -265,10 +266,18 @@ function clearPlotRouteDisplay() {
     state.mapLayers.plotRoute.clearLayers();
     state.mapLayers.plotTowns.clearLayers();
   }
+  const itinerary = byId("plot-itinerary");
+  const itineraryList = byId("plot-itinerary-list");
+  if (itinerary && itineraryList) {
+    itinerary.classList.add("hidden");
+    itinerary.setAttribute("aria-hidden", "true");
+    itineraryList.innerHTML = "";
+  }
   state.plotWaypointMarkers = [];
   state.plotRouteLine = null;
   state.plotTownMarkers = [];
   state.plotRouteId = null;
+  state.plotRoute = null;
   setText("plot-route-summary", "No plotted route yet.");
 }
 
@@ -321,7 +330,7 @@ function renderPlotWaypointList() {
       list.appendChild(item);
     });
   }
-  byId("submit-plot-trip").disabled = !state.tripId || state.plotWaypoints.length < 2;
+  byId("submit-plot-trip").disabled = state.tripMode !== "plot_trip" || state.plotWaypoints.length < 2;
 }
 
 function renderPlotWaypointMarkers() {
@@ -353,6 +362,7 @@ function routeTownColor(status) {
 function renderPlottedRoute(route) {
   ensureMap();
   if (!state.mapLayers || !route) return;
+  state.plotRoute = route;
   state.plotRouteId = route.id;
   state.mapLayers.plotRoute.clearLayers();
   state.mapLayers.plotTowns.clearLayers();
@@ -378,8 +388,14 @@ function renderPlottedRoute(route) {
     marker.bindPopup(
       `<strong>${town.name}</strong><br>${town.region}<br>Population: ${(town.population || 0).toLocaleString()}<br>Status: ${town.status}`
     );
+    marker.on("click", () => {
+      narrateTownNow(town).catch((error) => {
+        setText("plot-route-status", error.message);
+      });
+    });
     state.plotTownMarkers.push(marker);
   });
+  renderPlotItinerary(route);
   const done = (route.towns || []).filter((town) => town.status === "done").length;
   const researching = (route.towns || []).filter((town) => town.status === "researching").length;
   setText("plot-route-status", `Route ${route.status}${researching ? " – researching now" : ""}`);
@@ -389,14 +405,79 @@ function renderPlottedRoute(route) {
   );
 }
 
+function renderPlotItinerary(route) {
+  const panel = byId("plot-itinerary");
+  const list = byId("plot-itinerary-list");
+  if (!panel || !list) return;
+  panel.classList.remove("hidden");
+  panel.setAttribute("aria-hidden", "false");
+  list.innerHTML = "";
+  const towns = route.towns || [];
+  if (!towns.length) {
+    list.innerHTML = `<p class="empty-state">No towns found along this route corridor.</p>`;
+    return;
+  }
+  towns.forEach((town, index) => {
+    const item = document.createElement("article");
+    item.className = `itinerary-item status-${town.status}`;
+    const narration = town.research && town.research.narration ? town.research.narration.script : "";
+    item.innerHTML = `
+      <div>
+        <p class="feed-kicker">${index + 1}. ${town.status}</p>
+        <h3>${town.name}, ${town.region}</h3>
+        <p>${(town.population || 0).toLocaleString()} people • ${town.distance_km} km from route</p>
+        ${narration ? `<small>${narration}</small>` : ""}
+      </div>
+      <button class="icon-button" type="button">Narrate</button>
+    `;
+    item.querySelector("button").addEventListener("click", () => {
+      narrateTownNow(town).catch((error) => {
+        setText("plot-route-status", error.message);
+      });
+    });
+    list.appendChild(item);
+  });
+}
+
+async function ensurePlotTripCreated() {
+  if (state.tripId) {
+    return state.tripId;
+  }
+  const selectedLlmModel = byId("llm-model-select").value;
+  const payload = {
+    name: byId("trip-name").value || "Plotted Trip",
+    settings: {
+      narration_mode: byId("narration-mode").value,
+      age_band: byId("age-band").value,
+      trip_mode: "plot_trip",
+      save_history: byId("save-history").checked,
+      live_providers: byId("data-mode").value === "live",
+      llm_model: selectedLlmModel,
+    },
+  };
+  const data = await requestJson("/api/trips", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  state.tripId = data.trip.id;
+  state.speakAloud = byId("speak-aloud").checked;
+  byId("start-trip").disabled = true;
+  byId("stop-trip").disabled = false;
+  setText("trip-status", `Plotting (#${state.tripId})`);
+  setText("coords-status", "Plot trip mode");
+  setText("audio-status", "Ready");
+  return state.tripId;
+}
+
 async function submitPlotTrip() {
-  if (!state.tripId || state.plotWaypoints.length < 2) {
+  if (state.plotWaypoints.length < 2) {
     setText("plot-route-status", "Choose at least two map points first.");
     return;
   }
   byId("submit-plot-trip").disabled = true;
   setText("plot-route-status", "Planning route...");
-  const data = await requestJson(`/api/trips/${state.tripId}/plot-routes`, {
+  const tripId = await ensurePlotTripCreated();
+  const data = await requestJson(`/api/trips/${tripId}/plot-routes`, {
     method: "POST",
     body: JSON.stringify({
       name: byId("trip-name").value || "Plotted Trip",
@@ -742,9 +823,10 @@ async function startTrip() {
     return;
   }
   if (tripMode === "plot_trip") {
-    resetPlotTrip();
     byId("plot-trip-panel").classList.remove("hidden");
     byId("plot-trip-panel").setAttribute("aria-hidden", "false");
+    renderPlotWaypointList();
+    renderPlotWaypointMarkers();
     setText("trip-status", `Plotting (#${state.tripId})`);
     setText("coords-status", "Plot trip mode");
     setText("audio-status", "Ready");
@@ -877,7 +959,8 @@ function updateTripModeHint() {
   if (mode === "plan") {
     hint.textContent = "Plan mode: no GPS needed. Click locations on the map to build your itinerary.";
   } else if (mode === "plot_trip") {
-    hint.textContent = "Plot Trip mode: start the trip, click multiple map points, then submit to calculate the driving route and research towns along it.";
+    hint.textContent = "Plot Trip mode: click multiple map points, then submit to calculate the driving route and research towns along it.";
+    renderPlotWaypointList();
   } else {
     hint.textContent = "Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.";
   }
