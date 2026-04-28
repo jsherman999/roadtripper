@@ -11,6 +11,7 @@ This implementation targets a zero-dependency Python stack so it can run in the 
 - Pluggable geocoding and enrichment providers
 - Kid-friendly narration generation
 - Route-aware upcoming place previews
+- Plot Trip mode with waypoint selection, provider-backed route planning, route-corridor town selection, and background advance research
 - Search and Markdown export
 - Automated tests aligned to each roadmap phase
 
@@ -20,17 +21,21 @@ This implementation targets a zero-dependency Python stack so it can run in the 
 - Browser client:
   - Requests geolocation permission
   - Streams location updates to the backend
+  - Collects plot-trip map waypoints and polls plotted-route research status
   - Plays narration through browser speech synthesis
   - Displays live place cards, commentary feed, and searchable history
 - Python backend:
   - Accepts trip and location events
+  - Plans plotted routes through a routing-provider abstraction
+  - Finds towns along route geometry from a local town gazetteer
+  - Runs background research for route towns
   - Resolves the current place
   - Enriches place facts
   - Decides whether narration should occur
   - Persists locations and narration events
   - Exposes search and export endpoints
 - SQLite database:
-  - Stores trips, locations, and narration events
+  - Stores trips, locations, narration events, plotted routes, route waypoints, and route-town research status
 
 ### Architectural Style
 - Layered architecture
@@ -59,6 +64,11 @@ This implementation targets a zero-dependency Python stack so it can run in the 
   - `storyguide.storage`
   - `storyguide.providers`
   - `storyguide.server`
+- Phase 7:
+  - `storyguide.plotting`
+  - `storyguide.service`
+  - `storyguide.storage`
+  - `storyguide.static`
 
 ## Functional Requirements
 
@@ -91,6 +101,14 @@ This implementation targets a zero-dependency Python stack so it can run in the 
 - Every narration event is stored with timestamp and coordinates.
 - User can search trip history by keyword.
 - User can export a trip as Markdown.
+
+### Plot Trip
+- User can choose `Plot Trip`, start a trip, then click multiple map points.
+- User can submit the chosen points for route planning.
+- Backend stores the plotted route name, optimized waypoints, route geometry, distance, duration, and town research status.
+- Backend selects towns along the route corridor with population over 200 when a town gazetteer is available.
+- Backend researches each route town in the background using the same enrichment, nearby point-of-interest, narration, and optional LLM flow used by live driving.
+- Frontend renders pending towns in neutral styling, currently researched towns in red, completed towns in green, and failed towns in yellow.
 
 ### Reliability
 - App should work with demo data even if live providers fail.
@@ -137,6 +155,43 @@ This implementation targets a zero-dependency Python stack so it can run in the 
 - `score`: real
 - `tags_json`: JSON string
 - `recorded_at`: ISO timestamp
+
+### PlottedRoute
+- `id`: integer primary key
+- `trip_id`: foreign key
+- `name`: text
+- `status`: `pending`, `researching`, `done`, or `failed`
+- `route_source`: routing provider identifier, such as `osrm`, `openrouteservice_ordered`, or `straight_line_fallback`
+- `distance_m`: real
+- `duration_s`: real
+- `geometry_json`: JSON array of latitude/longitude points
+- `error`: nullable text
+- `created_at`, `updated_at`, `started_at`, `completed_at`: ISO timestamps
+
+### PlottedWaypoint
+- `id`: integer primary key
+- `route_id`: foreign key
+- `input_order`: integer
+- `optimized_order`: integer
+- `name`: text
+- `latitude`: real
+- `longitude`: real
+
+### RouteTown
+- `id`: integer primary key
+- `route_id`: foreign key
+- `name`: text
+- `region`: text
+- `country`: text
+- `latitude`: real
+- `longitude`: real
+- `population`: integer nullable
+- `distance_km`: distance from route corridor
+- `route_position`: normalized route ordering value
+- `status`: `pending`, `researching`, `done`, or `failed`
+- `error`: nullable text
+- `research_json`: stored enriched place, nearby POIs, narration, and related event id
+- `updated_at`: ISO timestamp
 
 ## API Design
 
@@ -212,6 +267,43 @@ Response:
 ### `POST /api/trips/{trip_id}/stop`
 - Marks a trip stopped.
 
+### `POST /api/trips/{trip_id}/plot-routes`
+Request:
+```json
+{
+  "name": "Austin to Waco",
+  "waypoints": [
+    {"name": "Point 1", "latitude": 30.2672, "longitude": -97.7431},
+    {"name": "Point 2", "latitude": 31.5493, "longitude": -97.1467}
+  ],
+  "min_population": 200,
+  "corridor_km": 12
+}
+```
+
+Response:
+```json
+{
+  "route": {
+    "id": 1,
+    "status": "researching",
+    "route_source": "osrm",
+    "geometry": [],
+    "waypoints": [],
+    "towns": []
+  }
+}
+```
+
+### `GET /api/trips/{trip_id}/plot-routes`
+- Lists plotted routes for the trip.
+
+### `GET /api/trips/{trip_id}/plot-routes/{route_id}`
+- Returns plotted route geometry, waypoints, town statuses, and stored research payloads.
+
+### `POST /api/trips/{trip_id}/plot-routes/{route_id}/research`
+- Starts or retries route-town background research.
+
 ### `DELETE /api/trips/{trip_id}`
 - Deletes a trip and associated records.
 
@@ -223,6 +315,8 @@ Response:
 - Upcoming place preview
 - Live commentary feed
 - Searchable trip archive
+- Plot Trip waypoint list and route-research status panel
+- Leaflet route polyline and route-town status markers
 
 ### Browser APIs
 - `navigator.geolocation.watchPosition`
@@ -247,6 +341,16 @@ Optional and disabled by default.
 - Live reverse geocoder via Nominatim-compatible HTTP lookup
 - Live Wikipedia summary lookup for town fact enrichment
 - Live results should merge into demo/base records rather than replacing required fields with nulls
+
+### Routing Providers
+- Default routing uses OSRM Trip service for selected-waypoint optimization and driving route geometry.
+- OpenRouteService Directions is supported with `ROADTRIPPER_ROUTING_PROVIDER=openrouteservice` and `ROADTRIPPER_ORS_API_KEY`; it returns GeoJSON route geometry for the clicked waypoint order.
+- Straight-line fallback exists only for offline/demo continuity and is labeled with `route_source=straight_line_fallback`.
+
+### Town Gazetteer
+- `storyguide/data/us_towns.json` may provide broad town coverage with name, region, latitude, longitude, and population.
+- `ROADTRIPPER_TOWN_DATA` can point at an alternate town JSON file.
+- Without a town data file, the app uses the built-in demo catalog, which is deterministic but not geographically comprehensive.
 
 ## Relevance Rules
 - Narrate when entering a new town or encountering a sufficiently interesting nearby landmark.

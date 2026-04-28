@@ -7,22 +7,23 @@ This project includes:
 - A browser UI with live trip controls
 - SQLite-backed trip history and Markdown export
 - A `launchd` LaunchAgent for automatic background startup on macOS
-- A deploy script for syncing workspace code to the `launchd` runtime copy
+- A deploy script for reinstalling and restarting the workspace-backed LaunchAgent
+- Plot Trip mode for waypoint-based route planning and advance town research
 - Optional LLM-backed narration via provider abstractions
 - Optional dedicated OpenAI TTS playback
 - A separate native SwiftUI iOS scaffold under `ios/`
 
 ## Files
-- App entry point: [main.py](/Users/jay/Documents/Playground%208/main.py)
-- Browser server: [storyguide/server.py](/Users/jay/Documents/Playground%208/storyguide/server.py)
-- Frontend UI: [storyguide/static/index.html](/Users/jay/Documents/Playground%208/storyguide/static/index.html)
-- LaunchAgent plist: [com.jay.storyguide.plist](/Users/jay/Documents/Playground%208/com.jay.storyguide.plist)
-- Deploy script: [deploy_storyguide.sh](/Users/jay/Documents/Playground%208/deploy_storyguide.sh)
-- LLM env example: [.env.example](/Users/jay/Documents/Playground%208/.env.example)
-- Product plan: [ROAD_TRIP_COMMENTARY_APP_PLAN.md](/Users/jay/Documents/Playground%208/ROAD_TRIP_COMMENTARY_APP_PLAN.md)
-- Technical spec: [ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md](/Users/jay/Documents/Playground%208/ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md)
-- iOS plan: [ROADTRIPPER_IOS_PLAN.md](/Users/jay/Documents/Playground%208/ROADTRIPPER_IOS_PLAN.md)
-- iOS scaffold guide: [ios/README.md](/Users/jay/Documents/Playground%208/ios/README.md)
+- App entry point: [main.py](/Users/jay/opencode/roadtripper/main.py)
+- Browser server: [storyguide/server.py](/Users/jay/opencode/roadtripper/storyguide/server.py)
+- Frontend UI: [storyguide/static/index.html](/Users/jay/opencode/roadtripper/storyguide/static/index.html)
+- LaunchAgent plist: [com.jay.storyguide.plist](/Users/jay/opencode/roadtripper/com.jay.storyguide.plist)
+- Deploy script: [deploy_storyguide.sh](/Users/jay/opencode/roadtripper/deploy_storyguide.sh)
+- LLM env example: [.env.example](/Users/jay/opencode/roadtripper/.env.example)
+- Product plan: [ROAD_TRIP_COMMENTARY_APP_PLAN.md](/Users/jay/opencode/roadtripper/ROAD_TRIP_COMMENTARY_APP_PLAN.md)
+- Technical spec: [ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md](/Users/jay/opencode/roadtripper/ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md)
+- iOS plan: [ROADTRIPPER_IOS_PLAN.md](/Users/jay/opencode/roadtripper/ROADTRIPPER_IOS_PLAN.md)
+- iOS scaffold guide: [ios/README.md](/Users/jay/opencode/roadtripper/ios/README.md)
 
 ## Requirements
 - macOS
@@ -30,26 +31,26 @@ This project includes:
 - A modern browser with:
   - Geolocation support
   - Speech synthesis support
-- Internet connectivity during use if you want live web enrichment later
+- Internet connectivity during use if you want live web enrichment, hosted routing, or LLM narration
 
 ## Native iOS Scaffold
 The repository now also includes a separate native SwiftUI scaffold at:
-- [ios/RoadTripperIOS.xcodeproj](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS.xcodeproj)
-- [ios/RoadTripperIOS/RoadTripperRootView.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperRootView.swift)
-- [ios/RoadTripperIOS/RoadTripperServices.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperServices.swift)
-- [ios/RoadTripperIOS/RoadTripperLLM.swift](/Users/jay/Documents/Playground%208/ios/RoadTripperIOS/RoadTripperLLM.swift)
+- [ios/RoadTripperIOS.xcodeproj](/Users/jay/opencode/roadtripper/ios/RoadTripperIOS.xcodeproj)
+- [ios/RoadTripperIOS/RoadTripperRootView.swift](/Users/jay/opencode/roadtripper/ios/RoadTripperIOS/RoadTripperRootView.swift)
+- [ios/RoadTripperIOS/RoadTripperServices.swift](/Users/jay/opencode/roadtripper/ios/RoadTripperIOS/RoadTripperServices.swift)
+- [ios/RoadTripperIOS/RoadTripperLLM.swift](/Users/jay/opencode/roadtripper/ios/RoadTripperIOS/RoadTripperLLM.swift)
 
 Open it with:
 
 ```bash
-open "/Users/jay/Documents/Playground 8/ios/RoadTripperIOS.xcodeproj"
+open "/Users/jay/opencode/roadtripper/ios/RoadTripperIOS.xcodeproj"
 ```
 
 The iOS app is a parallel client. It does not replace or modify the Python/web version.
-The iOS scaffold now includes an immersive dark map-first layout, a native settings screen with provider selection, model selection, Keychain-backed API key storage, OpenAI TTS voice playback, and an Embarrass, Minnesota simulator fallback startup. See [ios/README.md](/Users/jay/Documents/Playground%208/ios/README.md) for setup.
+The iOS scaffold now includes an immersive dark map-first layout, a native settings screen with provider selection, model selection, Keychain-backed API key storage, OpenAI TTS voice playback, and an Embarrass, Minnesota simulator fallback startup. See [ios/README.md](/Users/jay/opencode/roadtripper/ios/README.md) for setup.
 
 ## How The App Works
-1. The Python server runs locally on `http://127.0.0.1:8000`.
+1. The Python server runs locally on `http://127.0.0.1:8001`.
 2. The browser page asks for location permission when you start a trip.
 3. The browser sends live coordinates to the backend.
 4. The backend resolves a nearby town, gathers facts, decides whether narration should fire, and stores commentary history.
@@ -64,36 +65,34 @@ Use this when developing or testing.
 2. Start the server:
 
 ```bash
-cd "/Users/jay/Documents/Playground 8"
-PYTHONPYCACHEPREFIX="/Users/jay/Documents/Playground 8/.pycache" python3 main.py
+cd "/Users/jay/opencode/roadtripper"
+PYTHONPYCACHEPREFIX="/Users/jay/.storyguide/.pycache" python3 main.py
 ```
 
-3. Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+3. Open [http://127.0.0.1:8001](http://127.0.0.1:8001).
 4. Leave the terminal window open while using the app.
 5. Stop the server with `Ctrl-C`.
 
 ## Option 2: Run With launchd
 Use this when you want the backend to start automatically at login.
 
-The active `LaunchAgent` runs from:
-- Runtime copy: `/Users/jay/.storyguide`
+The active `LaunchAgent` runs the workspace copy from:
+- Workspace: `/Users/jay/opencode/roadtripper`
 - LaunchAgent plist: `/Users/jay/Library/LaunchAgents/com.jay.storyguide.plist`
 
 The backend service is already installed. To redeploy changes from the workspace, run:
 
 ```bash
-cd "/Users/jay/Documents/Playground 8"
+cd "/Users/jay/opencode/roadtripper"
 zsh ./deploy_storyguide.sh
 ```
 
 That script:
 - validates the plist
-- copies `main.py` and the `storyguide` package into `~/.storyguide`
-- copies `.env` into `~/.storyguide` if you created one
 - installs the current plist into `~/Library/LaunchAgents`
 - reloads and restarts the LaunchAgent
 
-After deployment, open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+After deployment, open [http://127.0.0.1:8001](http://127.0.0.1:8001).
 
 ## launchd Management Commands
 
@@ -114,14 +113,14 @@ launchctl bootout gui/$(id -u) /Users/jay/Library/LaunchAgents/com.jay.storyguid
 
 ### Reinstall and restart after code changes
 ```bash
-cd "/Users/jay/Documents/Playground 8"
+cd "/Users/jay/opencode/roadtripper"
 zsh ./deploy_storyguide.sh
 ```
 
 ## Using The Interface
 
 ## First Launch
-1. Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+1. Open [http://127.0.0.1:8001](http://127.0.0.1:8001).
 2. Enter a trip name.
 3. Choose a narration mode:
    - `Storyteller`: fuller narration with history and trivia
@@ -139,6 +138,11 @@ zsh ./deploy_storyguide.sh
 8. Decide whether to keep `Save searchable trip history` enabled.
 9. Decide whether to keep `Speak narration through laptop speakers` enabled.
 10. Click `Start Trip`.
+
+## Trip Modes
+- `Drive`: watches live browser geolocation and narrates as you travel.
+- `Plan`: lets you click a map location or marker and narrate that selected place immediately.
+- `Plot Trip`: lets you start a trip, click multiple map points, and submit them for route planning. The backend plans a route, saves the plotted trip, finds towns along the route with population over 200 when town data is available, and researches each town in the background. Town markers are gray while pending, red while currently being researched, green when gathered, and yellow if research failed.
 
 ## Browser Permissions
 When the trip starts, the browser will ask for:
@@ -194,14 +198,14 @@ By default the app saves:
 - narration events
 
 Workspace-run data is stored in:
-- `/Users/jay/Documents/Playground 8/storyguide.sqlite3`
+- `/Users/jay/opencode/roadtripper/storyguide.sqlite3`
 
-LaunchAgent-run data is stored in:
-- `/Users/jay/.storyguide/storyguide.sqlite3`
+LaunchAgent-run data is stored in the workspace because the LaunchAgent runs from `/Users/jay/opencode/roadtripper`:
+- `/Users/jay/opencode/roadtripper/storyguide.sqlite3`
 
 The LaunchAgent logs are:
-- `/Users/jay/.storyguide/storyguide.stdout.log`
-- `/Users/jay/.storyguide/storyguide.stderr.log`
+- `/Users/jay/opencode/roadtripper/storyguide.stdout.log`
+- `/Users/jay/opencode/roadtripper/storyguide.stderr.log`
 
 ## Exporting Trip Notes
 The backend supports Markdown export per trip at:
@@ -212,16 +216,36 @@ The backend supports Markdown export per trip at:
 
 Example:
 
-[http://127.0.0.1:8000/api/trips/1/export.md](http://127.0.0.1:8000/api/trips/1/export.md)
+[http://127.0.0.1:8001/api/trips/1/export.md](http://127.0.0.1:8001/api/trips/1/export.md)
 
 ## Updating The App
-If you change code in the workspace, the running LaunchAgent will not use those changes until you redeploy them into `~/.storyguide`.
+If you change code in the workspace, restart the LaunchAgent so it reloads the Python process.
 
 Use:
 
 ```bash
-cd "/Users/jay/Documents/Playground 8"
+cd "/Users/jay/opencode/roadtripper"
 zsh ./deploy_storyguide.sh
+```
+
+## Plot Trip Routing And Town Data
+Route planning is provider-based:
+- Default: `ROADTRIPPER_ROUTING_PROVIDER=osrm`, using OSRM's Trip service to optimize selected waypoints and return driving geometry.
+- Optional: `ROADTRIPPER_ROUTING_PROVIDER=openrouteservice` or `ors`, using OpenRouteService Directions with `ROADTRIPPER_ORS_API_KEY`. This returns ordered driving geometry for the clicked waypoint order.
+- Fallback: `ROADTRIPPER_ROUTING_PROVIDER=fallback`, using straight-line geometry for offline/demo testing only.
+
+Optional routing environment variables:
+
+```bash
+ROADTRIPPER_ROUTING_PROVIDER=osrm
+ROADTRIPPER_OSRM_URL=https://router.project-osrm.org
+ROADTRIPPER_ORS_API_KEY=your_ors_key_here
+```
+
+Town selection is handled by `storyguide.plotting.TownGazetteer`. If `storyguide/data/us_towns.json` exists, the app uses it to select towns within the route corridor whose population is over 200. If that file is missing, the app falls back to the small built-in demo catalog, which is enough for tests but not comprehensive for real cross-country trips. You can point at another town dataset with:
+
+```bash
+ROADTRIPPER_TOWN_DATA=/path/to/us_towns.json
 ```
 
 ## Optional LLM Narration
@@ -235,7 +259,7 @@ RoadTripper now has pluggable LLM provider abstractions. If no provider is confi
 - `openai`
 
 ### Setup with a `.env`
-Create `/Users/jay/Documents/Playground 8/.env` using [.env.example](/Users/jay/Documents/Playground%208/.env.example) as the starting point.
+Create `/Users/jay/opencode/roadtripper/.env` using [.env.example](/Users/jay/opencode/roadtripper/.env.example) as the starting point.
 
 Example for OpenRouter:
 
@@ -256,11 +280,11 @@ ROADTRIPPER_OPENAI_API_KEY=your_key_here
 Then redeploy:
 
 ```bash
-cd "/Users/jay/Documents/Playground 8"
+cd "/Users/jay/opencode/roadtripper"
 zsh ./deploy_storyguide.sh
 ```
 
-For manual runs, the server reads `.env` from the workspace automatically. For `launchd` runs, the deploy script copies `.env` into `~/.storyguide/.env`, and the server reads it there.
+For manual and `launchd` runs, the server reads `.env` from the workspace automatically.
 
 ## Optional OpenAI TTS Playback
 RoadTripper can use a dedicated OpenAI text-to-speech provider instead of browser speech synthesis.
@@ -283,15 +307,15 @@ Notes:
 From the workspace:
 
 ```bash
-cd "/Users/jay/Documents/Playground 8"
-PYTHONPYCACHEPREFIX="/Users/jay/Documents/Playground 8/.pycache" python3 -m unittest discover -s tests -v
+cd "/Users/jay/opencode/roadtripper"
+PYTHONPYCACHEPREFIX="/Users/jay/.storyguide/.pycache" python3 -m unittest discover -s tests -v
 ```
 
 ## Troubleshooting
 
 ### The browser page opens but nothing happens
 - Make sure the server is running.
-- Make sure you opened `http://127.0.0.1:8000` and not the file directly.
+- Make sure you opened `http://127.0.0.1:8001` and not the file directly.
 - Confirm the browser has permission to access location.
 
 ### No speech plays
@@ -303,11 +327,10 @@ PYTHONPYCACHEPREFIX="/Users/jay/Documents/Playground 8/.pycache" python3 -m unit
 ### The LaunchAgent says it is not running
 - Check status with `launchctl print gui/$(id -u)/com.jay.storyguide`
 - Redeploy with `zsh ./deploy_storyguide.sh`
-- Check logs in `~/.storyguide/storyguide.stderr.log`
+- Check logs in `/Users/jay/opencode/roadtripper/storyguide.stderr.log`
 
 ### The service runs but code changes are missing
-- The LaunchAgent runs the copy in `~/.storyguide`, not directly from `Documents`.
-- Run the deploy script again to sync changes.
+- The LaunchAgent runs the workspace Python process, so restart it with the deploy script after code changes.
 
 ## Notes About This Build
 - The current place catalog is a seeded demo dataset, so geographic coverage is intentionally limited.
