@@ -9,3 +9,4 @@ storyguide.stderr.log
 xcuserdata/
 *.xcuserstate
 storyguide/data/.build_cache/
+storyguide/data/.town_build_cache/

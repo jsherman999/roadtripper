@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import io
 import json
 import re
 import sys
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 
 OUTPUT = Path(__file__).resolve().parent.parent / "storyguide" / "data" / "us_towns.json"
+CACHE_DIR = Path(__file__).resolve().parent.parent / "storyguide" / "data" / ".town_build_cache"
+CENSUS_2020_PLACES_URL = "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/2020_Gazetteer/2020_Gaz_place_national.zip"
+CENSUS_2020_PLACE_POPULATION_URL = "https://api.census.gov/data/2020/dec/pl?get=NAME,P1_001N&for=place:*"
 
 STATE_ABBR_TO_NAME = {
     "AL": "Alabama",
@@ -67,7 +73,7 @@ STATE_ABBR_TO_NAME = {
 ALIASES = {
     "geoid": ("geoid", "geo_id", "geography_id", "placefp", "id"),
     "name": ("name", "city", "place", "placename", "display_name"),
-    "region": ("region", "state", "state_name", "st", "admin1", "admin_name"),
+    "region": ("region", "state", "state_name", "st", "usps", "admin1", "admin_name"),
     "latitude": ("latitude", "lat", "intptlat", "intptlat20", "point_lat"),
     "longitude": ("longitude", "lon", "lng", "intptlong", "intptlon", "intptlong20", "point_lon"),
     "population": ("population", "pop", "pop2020", "pop_2020", "p1_001n", "estimate", "population_total"),
@@ -79,6 +85,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--input", action="append", default=[], help="City/town CSV/TSV/JSON file with coordinates and population")
     parser.add_argument("--places-gazetteer", help="Census-style places gazetteer with GEOID/name/state/lat/lon")
     parser.add_argument("--population", help="Population CSV/TSV/JSON keyed by GEOID")
+    parser.add_argument(
+        "--download-census-2020",
+        action="store_true",
+        help="Download official Census 2020 place coordinates and population, then build from them",
+    )
+    parser.add_argument("--cache-dir", default=str(CACHE_DIR), help="Download cache directory")
     parser.add_argument("--output", default=str(OUTPUT), help="Output JSON path")
     parser.add_argument("--min-population", type=int, default=1, help="Minimum population to write")
     parser.add_argument("--source", default="", help="Source label to store in each town record")
@@ -87,6 +99,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     records = []
     for input_path in args.input:
         records.extend(load_direct_towns(Path(input_path), source=args.source or Path(input_path).stem))
+
+    if args.download_census_2020:
+        places_path, population_path = download_census_2020_sources(Path(args.cache_dir))
+        records.extend(
+            load_census_join(
+                places_path,
+                population_path,
+                source=args.source or "census_2020",
+            )
+        )
 
     if args.places_gazetteer:
         if not args.population:
@@ -146,8 +168,68 @@ def load_census_join(places_path: Path, population_path: Path, source: str = "ce
     return towns
 
 
+def download_census_2020_sources(cache_dir: Path = CACHE_DIR) -> tuple:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    places_zip = cache_dir / "2020_Gaz_place_national.zip"
+    places_tsv = cache_dir / "2020_Gaz_place_national.txt"
+    population_json = cache_dir / "2020_place_population.json"
+    population_csv = cache_dir / "2020_place_population.csv"
+
+    if not places_zip.exists():
+        download_file(CENSUS_2020_PLACES_URL, places_zip)
+    if not places_tsv.exists():
+        with zipfile.ZipFile(places_zip) as zf:
+            txt_names = [name for name in zf.namelist() if name.lower().endswith(".txt")]
+            if not txt_names:
+                raise ValueError("Census places zip did not contain a text file")
+            places_tsv.write_bytes(zf.read(txt_names[0]))
+
+    if not population_json.exists():
+        download_file(CENSUS_2020_PLACE_POPULATION_URL, population_json)
+    if not population_csv.exists():
+        write_census_api_population_csv(population_json, population_csv)
+
+    return places_tsv, population_csv
+
+
+def download_file(url: str, destination: Path) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "RoadTripper/1.0"})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        destination.write_bytes(response.read())
+
+
+def write_census_api_population_csv(source_json: Path, output_csv: Path) -> None:
+    with open(source_json, encoding="utf-8") as fh:
+        rows = json.load(fh)
+    if not rows or not isinstance(rows, list):
+        raise ValueError("Unexpected Census API population response")
+    header = rows[0]
+    with open(output_csv, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["geoid", "name", "population"])
+        writer.writeheader()
+        for values in rows[1:]:
+            row = dict(zip(header, values))
+            state = str(row.get("state", "")).zfill(2)
+            place = str(row.get("place", "")).zfill(5)
+            writer.writerow(
+                {
+                    "geoid": "%s%s" % (state, place),
+                    "name": row.get("NAME", ""),
+                    "population": row.get("P1_001N", ""),
+                }
+            )
+
+
 def read_rows(path: Path) -> List[Dict]:
     suffix = path.suffix.lower()
+    if suffix == ".zip":
+        with zipfile.ZipFile(path) as zf:
+            data_names = [name for name in zf.namelist() if name.lower().endswith((".txt", ".csv", ".tsv"))]
+            if not data_names:
+                raise ValueError("Zip source must contain a CSV/TSV/TXT file")
+            with zf.open(data_names[0]) as fh:
+                text = io.TextIOWrapper(fh, encoding="utf-8-sig")
+                return read_delimited_rows(text)
     if suffix == ".json":
         with open(path, encoding="utf-8") as fh:
             raw = json.load(fh)
@@ -157,11 +239,20 @@ def read_rows(path: Path) -> List[Dict]:
         return [normalize_keys(row) for row in rows if isinstance(row, dict)]
 
     with open(path, newline="", encoding="utf-8-sig") as fh:
-        sample = fh.read(4096)
-        fh.seek(0)
-        delimiter = "\t" if "\t" in sample and sample.count("\t") >= sample.count(",") else ","
-        reader = csv.DictReader(fh, delimiter=delimiter)
-        return [normalize_keys(row) for row in reader]
+        return read_delimited_rows(fh)
+
+
+def read_delimited_rows(fh) -> List[Dict]:
+    sample = fh.read(4096)
+    fh.seek(0)
+    if "|" in sample and sample.count("|") >= sample.count("\t") and sample.count("|") >= sample.count(","):
+        delimiter = "|"
+    elif "\t" in sample and sample.count("\t") >= sample.count(","):
+        delimiter = "\t"
+    else:
+        delimiter = ","
+    reader = csv.DictReader(fh, delimiter=delimiter)
+    return [normalize_keys(row) for row in reader]
 
 
 def normalize_town_row(row: Dict, source: str = "gazetteer") -> Optional[Dict]:

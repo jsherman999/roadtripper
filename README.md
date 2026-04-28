@@ -291,6 +291,16 @@ python3 scripts/build_town_gazetteer.py \
   --source census
 ```
 
+Or let the builder download the official Census 2020 place gazetteer and 2020 PL population table:
+
+```bash
+python3 scripts/build_town_gazetteer.py \
+  --download-census-2020 \
+  --output storyguide/data/us_towns.json \
+  --min-population 200 \
+  --source census_2020
+```
+
 For aggregation, the most reliable approach is to use an official or licensed city baseline for name/state/coordinates/population, then let RoadTripper enrich only the selected route towns:
 - U.S. Census Gazetteer plus Census/ACS population table joined by GEOID: most official, but requires joining two files because Gazetteer coordinate files do not include population.
 - SimpleMaps US Cities: easiest practical CSV if its license fits your use.

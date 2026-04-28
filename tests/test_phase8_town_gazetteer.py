@@ -3,7 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_town_gazetteer import dedupe_towns, load_census_join, load_direct_towns, main
+from scripts.build_town_gazetteer import (
+    dedupe_towns,
+    load_census_join,
+    load_direct_towns,
+    main,
+    write_census_api_population_csv,
+)
 
 
 class Phase8TownGazetteerTests(unittest.TestCase):
@@ -27,7 +33,7 @@ class Phase8TownGazetteerTests(unittest.TestCase):
             places = Path(tempdir) / "places.tsv"
             population = Path(tempdir) / "population.csv"
             places.write_text(
-                "GEOID\tNAME\tST\tINTPTLAT\tINTPTLONG\n"
+                "GEOID\tNAME\tUSPS\tINTPTLAT\tINTPTLONG\n"
                 "4845000\tAustin city\tTX\t30.2672\t-97.7431\n",
                 encoding="utf-8",
             )
@@ -68,6 +74,41 @@ class Phase8TownGazetteerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(payload["town_count"], 1)
         self.assertEqual(payload["towns"][0]["name"], "Waco")
+
+    def test_write_census_api_population_csv_adds_state_place_geoid(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            source = Path(tempdir) / "population.json"
+            output = Path(tempdir) / "population.csv"
+            source.write_text(
+                json.dumps(
+                    [
+                        ["NAME", "P1_001N", "state", "place"],
+                        ["Austin city, Texas", "974447", "48", "45000"],
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            write_census_api_population_csv(source, output)
+            rows = output.read_text(encoding="utf-8")
+        self.assertIn("4845000", rows)
+        self.assertIn("974447", rows)
+
+    def test_write_census_api_population_csv_pads_short_state_codes(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            source = Path(tempdir) / "population.json"
+            output = Path(tempdir) / "population.csv"
+            source.write_text(
+                json.dumps(
+                    [
+                        ["NAME", "P1_001N", "state", "place"],
+                        ["Abanda CDP, Alabama", "192", "1", "00100"],
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            write_census_api_population_csv(source, output)
+            rows = output.read_text(encoding="utf-8")
+        self.assertIn("0100100", rows)
 
 
 if __name__ == "__main__":
