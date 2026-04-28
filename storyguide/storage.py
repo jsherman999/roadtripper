@@ -59,6 +59,52 @@ class Storage:
                     recorded_at TEXT NOT NULL,
                     FOREIGN KEY(trip_id) REFERENCES trips(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS plotted_routes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    trip_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    route_source TEXT NOT NULL,
+                    distance_m REAL NOT NULL,
+                    duration_s REAL NOT NULL,
+                    geometry_json TEXT NOT NULL,
+                    error TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    FOREIGN KEY(trip_id) REFERENCES trips(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS plotted_waypoints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    route_id INTEGER NOT NULL,
+                    input_order INTEGER NOT NULL,
+                    optimized_order INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    FOREIGN KEY(route_id) REFERENCES plotted_routes(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS route_towns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    route_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    region TEXT NOT NULL,
+                    country TEXT NOT NULL,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    population INTEGER,
+                    distance_km REAL NOT NULL,
+                    route_position REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    error TEXT,
+                    research_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(route_id) REFERENCES plotted_routes(id)
+                );
                 """
             )
             self.connection.commit()
@@ -94,6 +140,11 @@ class Storage:
 
     def delete_trip(self, trip_id: int):
         with self.lock:
+            route_rows = self.connection.execute("SELECT id FROM plotted_routes WHERE trip_id = ?", (trip_id,)).fetchall()
+            for row in route_rows:
+                self.connection.execute("DELETE FROM plotted_waypoints WHERE route_id = ?", (row["id"],))
+                self.connection.execute("DELETE FROM route_towns WHERE route_id = ?", (row["id"],))
+            self.connection.execute("DELETE FROM plotted_routes WHERE trip_id = ?", (trip_id,))
             self.connection.execute("DELETE FROM locations WHERE trip_id = ?", (trip_id,))
             self.connection.execute("DELETE FROM narration_events WHERE trip_id = ?", (trip_id,))
             self.connection.execute("DELETE FROM trips WHERE id = ?", (trip_id,))
@@ -193,6 +244,160 @@ class Storage:
                 ).fetchall()
         return [self._event_row_to_dict(row) for row in rows]
 
+    def create_plotted_route(
+        self,
+        trip_id: int,
+        name: str,
+        route_source: str,
+        distance_m: float,
+        duration_s: float,
+        geometry: List[Dict],
+        status: str = "pending",
+        error: Optional[str] = None,
+    ) -> Dict:
+        now = utcnow()
+        with self.lock:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO plotted_routes(
+                    trip_id, name, status, route_source, distance_m, duration_s,
+                    geometry_json, error, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (trip_id, name, status, route_source, distance_m, duration_s, json.dumps(geometry), error, now, now),
+            )
+            self.connection.commit()
+        return self.get_plotted_route(cursor.lastrowid)
+
+    def set_route_status(self, route_id: int, status: str, error: Optional[str] = None) -> Optional[Dict]:
+        now = utcnow()
+        completed_at = now if status in ("done", "failed") else None
+        started_at = now if status == "researching" else None
+        with self.lock:
+            if started_at:
+                self.connection.execute(
+                    """
+                    UPDATE plotted_routes
+                    SET status = ?, error = ?, updated_at = ?, started_at = COALESCE(started_at, ?)
+                    WHERE id = ?
+                    """,
+                    (status, error, now, started_at, route_id),
+                )
+            elif completed_at:
+                self.connection.execute(
+                    """
+                    UPDATE plotted_routes
+                    SET status = ?, error = ?, updated_at = ?, completed_at = ?
+                    WHERE id = ?
+                    """,
+                    (status, error, now, completed_at, route_id),
+                )
+            else:
+                self.connection.execute(
+                    "UPDATE plotted_routes SET status = ?, error = ?, updated_at = ? WHERE id = ?",
+                    (status, error, now, route_id),
+                )
+            self.connection.commit()
+        return self.get_plotted_route(route_id)
+
+    def add_plotted_waypoints(self, route_id: int, waypoints: List[Dict]):
+        with self.lock:
+            self.connection.execute("DELETE FROM plotted_waypoints WHERE route_id = ?", (route_id,))
+            for waypoint in waypoints:
+                self.connection.execute(
+                    """
+                    INSERT INTO plotted_waypoints(route_id, input_order, optimized_order, name, latitude, longitude)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        route_id,
+                        int(waypoint.get("input_order", waypoint.get("optimized_order", 0))),
+                        int(waypoint.get("optimized_order", waypoint.get("input_order", 0))),
+                        waypoint.get("name") or "Waypoint",
+                        float(waypoint["latitude"]),
+                        float(waypoint["longitude"]),
+                    ),
+                )
+            self.connection.commit()
+
+    def add_route_towns(self, route_id: int, towns: List[Dict]):
+        now = utcnow()
+        with self.lock:
+            self.connection.execute("DELETE FROM route_towns WHERE route_id = ?", (route_id,))
+            for town in towns:
+                self.connection.execute(
+                    """
+                    INSERT INTO route_towns(
+                        route_id, name, region, country, latitude, longitude, population,
+                        distance_km, route_position, status, error, research_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '{}', ?)
+                    """,
+                    (
+                        route_id,
+                        town["name"],
+                        town["region"],
+                        town.get("country", "USA"),
+                        float(town["latitude"]),
+                        float(town["longitude"]),
+                        int(town.get("population") or 0),
+                        float(town.get("distance_km") or 0),
+                        float(town.get("route_position") or 0),
+                        now,
+                    ),
+                )
+            self.connection.commit()
+
+    def update_route_town(self, town_id: int, status: str, research: Optional[Dict] = None, error: Optional[str] = None) -> Optional[Dict]:
+        now = utcnow()
+        with self.lock:
+            self.connection.execute(
+                """
+                UPDATE route_towns
+                SET status = ?, research_json = ?, error = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, json.dumps(research or {}), error, now, town_id),
+            )
+            self.connection.commit()
+            row = self.connection.execute("SELECT * FROM route_towns WHERE id = ?", (town_id,)).fetchone()
+        return self._route_town_row_to_dict(row) if row else None
+
+    def get_route_town(self, town_id: int) -> Optional[Dict]:
+        with self.lock:
+            row = self.connection.execute("SELECT * FROM route_towns WHERE id = ?", (town_id,)).fetchone()
+        return self._route_town_row_to_dict(row) if row else None
+
+    def list_pending_route_towns(self, route_id: int) -> List[Dict]:
+        with self.lock:
+            rows = self.connection.execute(
+                """
+                SELECT * FROM route_towns
+                WHERE route_id = ? AND status IN ('pending', 'failed')
+                ORDER BY route_position ASC, id ASC
+                """,
+                (route_id,),
+            ).fetchall()
+        return [self._route_town_row_to_dict(row) for row in rows]
+
+    def get_plotted_route(self, route_id: int) -> Optional[Dict]:
+        with self.lock:
+            row = self.connection.execute("SELECT * FROM plotted_routes WHERE id = ?", (route_id,)).fetchone()
+        return self._route_row_to_dict(row) if row else None
+
+    def get_plotted_route_for_trip(self, trip_id: int, route_id: int) -> Optional[Dict]:
+        route = self.get_plotted_route(route_id)
+        if route and route["trip_id"] == trip_id:
+            return route
+        return None
+
+    def list_plotted_routes(self, trip_id: int) -> List[Dict]:
+        with self.lock:
+            rows = self.connection.execute(
+                "SELECT * FROM plotted_routes WHERE trip_id = ? ORDER BY id DESC",
+                (trip_id,),
+            ).fetchall()
+        return [self._route_row_to_dict(row) for row in rows]
+
     def export_trip_markdown(self, trip_id: int) -> str:
         trip = self.get_trip(trip_id)
         if not trip:
@@ -228,4 +433,28 @@ class Storage:
     def _event_row_to_dict(self, row: sqlite3.Row) -> Dict:
         data = dict(row)
         data["tags"] = json.loads(data.pop("tags_json"))
+        return data
+
+    def _route_row_to_dict(self, row: sqlite3.Row) -> Dict:
+        data = dict(row)
+        data["geometry"] = json.loads(data.pop("geometry_json"))
+        with self.lock:
+            waypoint_rows = self.connection.execute(
+                "SELECT * FROM plotted_waypoints WHERE route_id = ? ORDER BY optimized_order ASC",
+                (data["id"],),
+            ).fetchall()
+            town_rows = self.connection.execute(
+                "SELECT * FROM route_towns WHERE route_id = ? ORDER BY route_position ASC, id ASC",
+                (data["id"],),
+            ).fetchall()
+        data["waypoints"] = [self._waypoint_row_to_dict(row) for row in waypoint_rows]
+        data["towns"] = [self._route_town_row_to_dict(row) for row in town_rows]
+        return data
+
+    def _waypoint_row_to_dict(self, row: sqlite3.Row) -> Dict:
+        return dict(row)
+
+    def _route_town_row_to_dict(self, row: sqlite3.Row) -> Dict:
+        data = dict(row)
+        data["research"] = json.loads(data.pop("research_json"))
         return data

@@ -8,6 +8,7 @@ class TripSettings:
     save_history: bool = True
     narration_mode: str = "storyteller"
     age_band: str = "adult"
+    trip_mode: str = "drive"
     live_providers: bool = False
     llm_model: str = ""
     minimum_interval_minutes: int = 3
@@ -22,6 +23,7 @@ class TripSettings:
             save_history=bool(payload.get("save_history", defaults.save_history)),
             narration_mode=str(payload.get("narration_mode", defaults.narration_mode)),
             age_band=str(payload.get("age_band", defaults.age_band)),
+            trip_mode=str(payload.get("trip_mode", defaults.trip_mode)),
             live_providers=bool(payload.get("live_providers", defaults.live_providers)),
             llm_model=str(payload.get("llm_model", defaults.llm_model)),
             minimum_interval_minutes=int(payload.get("minimum_interval_minutes", defaults.minimum_interval_minutes)),
@@ -34,6 +36,7 @@ class TripSettings:
             "save_history": self.save_history,
             "narration_mode": self.narration_mode,
             "age_band": self.age_band,
+            "trip_mode": self.trip_mode,
             "live_providers": self.live_providers,
             "llm_model": self.llm_model,
             "minimum_interval_minutes": self.minimum_interval_minutes,

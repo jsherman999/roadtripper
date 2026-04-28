@@ -4,6 +4,7 @@ from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_
 from storyguide.enrollment import EnrollmentDB
 from storyguide.models import TripSettings
 from storyguide.narration import NarrationBuilder
+from storyguide.plotting import ResilientRoutingProvider, TownGazetteer
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
 from storyguide.relevance import RelevanceEngine
 from storyguide.route import RouteForecaster
@@ -23,6 +24,8 @@ class StoryGuideService:
         llm_provider: Optional[BaseNarrationLLM] = None,
         tts_provider: Optional[BaseTTSProvider] = None,
         openai_provider: Optional[BaseNarrationLLM] = None,
+        routing_provider: Optional[ResilientRoutingProvider] = None,
+        town_gazetteer: Optional[TownGazetteer] = None,
     ):
         self.storage = storage or Storage()
         self.enrollment_db = EnrollmentDB()
@@ -38,6 +41,8 @@ class StoryGuideService:
         self.llm_provider = llm_provider or build_llm_provider_from_env()
         self.tts_provider = tts_provider or build_tts_provider_from_env()
         self.openai_provider = openai_provider if openai_provider is not None else build_openai_provider_from_env()
+        self.routing_provider = routing_provider or ResilientRoutingProvider()
+        self.town_gazetteer = town_gazetteer or TownGazetteer()
 
     def create_trip(self, name: str, settings_payload: Optional[Dict] = None) -> Dict:
         settings = TripSettings.from_dict(settings_payload)
@@ -65,6 +70,45 @@ class StoryGuideService:
     def export_trip_markdown(self, trip_id: int) -> str:
         return self.storage.export_trip_markdown(trip_id)
 
+    def list_plotted_routes(self, trip_id: int):
+        if not self.storage.get_trip(trip_id):
+            raise KeyError("Trip not found")
+        return self.storage.list_plotted_routes(trip_id)
+
+    def get_plotted_route(self, trip_id: int, route_id: int):
+        if not self.storage.get_trip(trip_id):
+            raise KeyError("Trip not found")
+        route = self.storage.get_plotted_route_for_trip(trip_id, route_id)
+        if not route:
+            raise KeyError("Route not found")
+        return route
+
+    def create_plotted_route(self, trip_id: int, payload: Dict) -> Dict:
+        trip = self.storage.get_trip(trip_id)
+        if not trip:
+            raise KeyError("Trip not found")
+        waypoints = self._normalize_waypoints(payload.get("waypoints") or [])
+        name = payload.get("name") or "%s plotted route" % trip["name"]
+        plan = self.routing_provider.plan_route(waypoints)
+        towns = self.town_gazetteer.towns_along_route(
+            plan.geometry,
+            min_population=int(payload.get("min_population", 200)),
+            corridor_km=float(payload.get("corridor_km", 12.0)),
+        )
+        route = self.storage.create_plotted_route(
+            trip_id=trip_id,
+            name=name,
+            route_source=plan.source,
+            distance_m=plan.distance_m,
+            duration_s=plan.duration_s,
+            geometry=plan.geometry,
+            status="pending",
+            error="Routing used straight-line fallback" if plan.fallback else None,
+        )
+        self.storage.add_plotted_waypoints(route["id"], plan.waypoints)
+        self.storage.add_route_towns(route["id"], towns)
+        return self.storage.get_plotted_route(route["id"])
+
     def llm_free_models(self) -> Dict:
         models = list(self.llm_provider.list_free_models())
         if self.openai_provider and self.openai_provider.api_key:
@@ -87,6 +131,28 @@ class StoryGuideService:
             return None
         audio, mime_type, resolved_voice = result
         return audio_json_payload(audio, mime_type, resolved_voice, getattr(self.tts_provider, "provider_name", "openai"))
+
+    def _normalize_waypoints(self, waypoints) -> list:
+        normalized = []
+        for index, waypoint in enumerate(waypoints):
+            try:
+                latitude = float(waypoint["latitude"])
+                longitude = float(waypoint["longitude"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                continue
+            normalized.append(
+                {
+                    "name": waypoint.get("name") or "Waypoint %s" % (index + 1),
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "input_order": index,
+                }
+            )
+        if len(normalized) < 2:
+            raise ValueError("Plot trip needs at least two map points")
+        return normalized
 
     def narrate_selected_place(self, trip_id: int, place_payload: Dict) -> Dict:
         trip = self.storage.get_trip(trip_id)

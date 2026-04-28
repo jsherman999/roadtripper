@@ -56,6 +56,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             if len(parts) == 4:
                 trip_id = int(parts[2])
                 return self._json_response({"events": self.server.service.trip_events(trip_id)})
+        if parsed.path.startswith("/api/trips/") and "/plot-routes" in parsed.path:
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) == 4 and parts[3] == "plot-routes":
+                trip_id = int(parts[2])
+                try:
+                    return self._json_response({"routes": self.server.service.list_plotted_routes(trip_id)})
+                except KeyError:
+                    return self._json_response({"error": "Trip not found"}, status=HTTPStatus.NOT_FOUND)
+            if len(parts) == 5 and parts[3] == "plot-routes":
+                trip_id = int(parts[2])
+                route_id = int(parts[4])
+                try:
+                    return self._json_response({"route": self.server.service.get_plotted_route(trip_id, route_id)})
+                except KeyError:
+                    return self._json_response({"error": "Route not found"}, status=HTTPStatus.NOT_FOUND)
         self._json_response({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
 
     def do_POST(self):
@@ -96,6 +111,17 @@ class RequestHandler(BaseHTTPRequestHandler):
                 except KeyError:
                     return self._json_response({"error": "Trip not found"}, status=HTTPStatus.NOT_FOUND)
                 return self._json_response(result)
+        if parsed.path.startswith("/api/trips/") and parsed.path.endswith("/plot-routes"):
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) == 4:
+                trip_id = int(parts[2])
+                try:
+                    route = self.server.service.create_plotted_route(trip_id, payload)
+                except KeyError:
+                    return self._json_response({"error": "Trip not found"}, status=HTTPStatus.NOT_FOUND)
+                except ValueError as exc:
+                    return self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return self._json_response({"route": route}, status=HTTPStatus.CREATED)
         if parsed.path.startswith("/api/trips/") and parsed.path.endswith("/stop"):
             parts = [part for part in parsed.path.split("/") if part]
             if len(parts) == 4:
