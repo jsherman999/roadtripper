@@ -90,6 +90,64 @@ class OSRMRoutingProvider:
         return ordered
 
 
+class OpenRouteServiceRoutingProvider:
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, timeout: float = 12.0):
+        self.api_key = api_key or os.environ.get("ROADTRIPPER_ORS_API_KEY", "")
+        self.base_url = (base_url or os.environ.get("ROADTRIPPER_ORS_URL") or "https://api.openrouteservice.org").rstrip("/")
+        self.timeout = timeout
+
+    def plan_route(self, waypoints: Sequence[Dict]) -> RoutePlan:
+        if len(waypoints) < 2:
+            raise ValueError("At least two waypoints are required")
+        if not self.api_key:
+            raise RoutingError("OpenRouteService requires ROADTRIPPER_ORS_API_KEY")
+        url = "%s/v2/directions/driving-car/geojson" % self.base_url
+        body = {
+            "coordinates": [[float(point["longitude"]), float(point["latitude"])] for point in waypoints],
+            "instructions": False,
+        }
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": self.api_key,
+                "Content-Type": "application/json",
+                "Accept": "application/geo+json, application/json",
+                "User-Agent": "RoadTripper/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError) as exc:
+            raise RoutingError("OpenRouteService routing failed: %s" % exc) from exc
+        features = payload.get("features") or []
+        if not features:
+            raise RoutingError("OpenRouteService returned no route")
+        feature = features[0]
+        geometry = [
+            {"latitude": float(lat), "longitude": float(lon)}
+            for lon, lat in feature.get("geometry", {}).get("coordinates", [])
+        ]
+        if not geometry:
+            raise RoutingError("OpenRouteService returned an empty route")
+        summary = (feature.get("properties") or {}).get("summary") or {}
+        optimized = []
+        for index, waypoint in enumerate(waypoints):
+            payload = dict(waypoint)
+            payload["input_order"] = index
+            payload["optimized_order"] = index
+            optimized.append(payload)
+        return RoutePlan(
+            geometry=geometry,
+            waypoints=optimized,
+            distance_m=float(summary.get("distance") or 0.0),
+            duration_s=float(summary.get("duration") or 0.0),
+            source="openrouteservice_ordered",
+            fallback=False,
+        )
+
+
 class FallbackRoutingProvider:
     def plan_route(self, waypoints: Sequence[Dict]) -> RoutePlan:
         if len(waypoints) < 2:
@@ -129,6 +187,21 @@ class ResilientRoutingProvider:
             return self.primary.plan_route(waypoints)
         except RoutingError:
             return self.fallback.plan_route(waypoints)
+
+
+def build_routing_provider_from_env(env: Optional[Dict[str, str]] = None):
+    env = env or os.environ
+    provider = env.get("ROADTRIPPER_ROUTING_PROVIDER", "osrm").strip().lower()
+    if provider == "ors" or provider == "openrouteservice":
+        primary = OpenRouteServiceRoutingProvider(
+            api_key=env.get("ROADTRIPPER_ORS_API_KEY", ""),
+            base_url=env.get("ROADTRIPPER_ORS_URL", ""),
+        )
+    elif provider == "fallback" or provider == "straight_line":
+        return FallbackRoutingProvider()
+    else:
+        primary = OSRMRoutingProvider(base_url=env.get("ROADTRIPPER_OSRM_URL", ""))
+    return ResilientRoutingProvider(primary=primary, fallback=FallbackRoutingProvider())
 
 
 class TownGazetteer:

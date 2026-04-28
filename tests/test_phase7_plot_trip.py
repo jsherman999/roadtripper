@@ -1,6 +1,6 @@
 import unittest
 
-from storyguide.plotting import RoutePlan, TownGazetteer
+from storyguide.plotting import FallbackRoutingProvider, RoutePlan, TownGazetteer, build_routing_provider_from_env
 from storyguide.service import StoryGuideService
 from storyguide.storage import Storage
 
@@ -60,6 +60,10 @@ class Phase7PlotTripTests(unittest.TestCase):
                 trip["id"],
                 {"waypoints": [{"latitude": 30.2672, "longitude": -97.7431}]},
             )
+
+    def test_routing_provider_can_be_forced_to_fallback(self):
+        provider = build_routing_provider_from_env({"ROADTRIPPER_ROUTING_PROVIDER": "fallback"})
+        self.assertIsInstance(provider, FallbackRoutingProvider)
 
     def test_get_plotted_route_is_scoped_to_trip(self):
         service = StoryGuideService(

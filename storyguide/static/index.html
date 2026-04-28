@@ -46,6 +46,7 @@
             <select id="trip-mode">
               <option value="drive">Drive</option>
               <option value="plan">Plan</option>
+              <option value="plot_trip">Plot Trip</option>
             </select>
           </label>
         </div>
@@ -117,6 +118,24 @@
         <p class="hint" id="trip-hint">
           Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.
         </p>
+      </section>
+
+      <section id="plot-trip-panel" class="panel plot-trip-panel hidden" aria-hidden="true">
+        <div class="panel-head">
+          <div>
+            <p class="panel-label">Plot Trip</p>
+            <h2>Selected route points</h2>
+          </div>
+          <p id="plot-route-status" class="microcopy">Click the map to add at least two points.</p>
+        </div>
+        <div id="plot-waypoint-list" class="waypoint-list"></div>
+        <div class="button-row">
+          <div class="button-group">
+            <button id="submit-plot-trip" type="button" disabled>Submit Plot Trip</button>
+            <button id="clear-plot-trip" class="secondary-button" type="button">Clear Points</button>
+          </div>
+          <p id="plot-route-summary" class="microcopy">No plotted route yet.</p>
+        </div>
       </section>
 
       <section id="help-panel" class="panel help-panel hidden" aria-hidden="true">

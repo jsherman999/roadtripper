@@ -6,7 +6,7 @@ from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_
 from storyguide.enrollment import EnrollmentDB
 from storyguide.models import PlaceProfile, TripSettings
 from storyguide.narration import NarrationBuilder
-from storyguide.plotting import ResilientRoutingProvider, TownGazetteer
+from storyguide.plotting import ResilientRoutingProvider, TownGazetteer, build_routing_provider_from_env
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
 from storyguide.relevance import RelevanceEngine
 from storyguide.route import RouteForecaster
@@ -44,7 +44,7 @@ class StoryGuideService:
         self.llm_provider = llm_provider or build_llm_provider_from_env()
         self.tts_provider = tts_provider or build_tts_provider_from_env()
         self.openai_provider = openai_provider if openai_provider is not None else build_openai_provider_from_env()
-        self.routing_provider = routing_provider or ResilientRoutingProvider()
+        self.routing_provider = routing_provider or build_routing_provider_from_env()
         self.town_gazetteer = town_gazetteer or TownGazetteer()
         self.start_background_jobs = start_background_jobs
         self._plot_research_threads = {}

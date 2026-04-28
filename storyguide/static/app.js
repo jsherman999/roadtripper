@@ -18,6 +18,12 @@ const state = {
   userNarrationActive: false,
   tripMode: "drive",
   planMarkers: [],
+  plotWaypoints: [],
+  plotWaypointMarkers: [],
+  plotRouteId: null,
+  plotRouteLine: null,
+  plotTownMarkers: [],
+  plotPollTimer: null,
 };
 
 function detectPlatform() {
@@ -211,8 +217,15 @@ function ensureMap() {
     points: L.layerGroup().addTo(state.map),
     discovered: L.layerGroup().addTo(state.map),
     plan: L.layerGroup().addTo(state.map),
+    plotWaypoints: L.layerGroup().addTo(state.map),
+    plotRoute: L.layerGroup().addTo(state.map),
+    plotTowns: L.layerGroup().addTo(state.map),
   };
   state.map.on("click", (event) => {
+    if (state.tripMode === "plot_trip" && state.tripId) {
+      addPlotWaypoint(event.latlng.lat, event.latlng.lng);
+      return;
+    }
     narrateMapLocation({
       latitude: event.latlng.lat,
       longitude: event.latlng.lng,
@@ -240,6 +253,186 @@ function addPlanMarker(latitude, longitude, name) {
 function clearPlanMarkers() {
   state.planMarkers.forEach((m) => state.mapLayers.plan.removeLayer(m));
   state.planMarkers = [];
+}
+
+function clearPlotRouteDisplay() {
+  if (state.plotPollTimer) {
+    window.clearInterval(state.plotPollTimer);
+    state.plotPollTimer = null;
+  }
+  if (state.mapLayers) {
+    state.mapLayers.plotWaypoints.clearLayers();
+    state.mapLayers.plotRoute.clearLayers();
+    state.mapLayers.plotTowns.clearLayers();
+  }
+  state.plotWaypointMarkers = [];
+  state.plotRouteLine = null;
+  state.plotTownMarkers = [];
+  state.plotRouteId = null;
+  setText("plot-route-summary", "No plotted route yet.");
+}
+
+function resetPlotTrip() {
+  state.plotWaypoints = [];
+  clearPlotRouteDisplay();
+  renderPlotWaypointList();
+  setText("plot-route-status", "Click the map to add at least two points.");
+}
+
+function addPlotWaypoint(latitude, longitude) {
+  ensureMap();
+  const waypoint = {
+    name: `Point ${state.plotWaypoints.length + 1}`,
+    latitude,
+    longitude,
+  };
+  state.plotWaypoints.push(waypoint);
+  renderPlotWaypointList();
+  renderPlotWaypointMarkers();
+  setText("plot-route-status", `${state.plotWaypoints.length} point${state.plotWaypoints.length === 1 ? "" : "s"} selected.`);
+}
+
+function removePlotWaypoint(index) {
+  state.plotWaypoints.splice(index, 1);
+  state.plotWaypoints.forEach((waypoint, nextIndex) => {
+    waypoint.name = `Point ${nextIndex + 1}`;
+  });
+  clearPlotRouteDisplay();
+  renderPlotWaypointList();
+  renderPlotWaypointMarkers();
+}
+
+function renderPlotWaypointList() {
+  const list = byId("plot-waypoint-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!state.plotWaypoints.length) {
+    list.innerHTML = `<p class="empty-state">No points selected.</p>`;
+  } else {
+    state.plotWaypoints.forEach((waypoint, index) => {
+      const item = document.createElement("div");
+      item.className = "waypoint-item";
+      item.innerHTML = `
+        <strong>${waypoint.name}</strong>
+        <span>${waypoint.latitude.toFixed(4)}, ${waypoint.longitude.toFixed(4)}</span>
+        <button class="icon-button" type="button">Remove</button>
+      `;
+      item.querySelector("button").addEventListener("click", () => removePlotWaypoint(index));
+      list.appendChild(item);
+    });
+  }
+  byId("submit-plot-trip").disabled = !state.tripId || state.plotWaypoints.length < 2;
+}
+
+function renderPlotWaypointMarkers() {
+  ensureMap();
+  if (!state.mapLayers) return;
+  state.mapLayers.plotWaypoints.clearLayers();
+  state.plotWaypointMarkers = [];
+  state.plotWaypoints.forEach((waypoint, index) => {
+    const marker = L.marker([waypoint.latitude, waypoint.longitude], {
+      icon: L.divIcon({
+        className: "plot-waypoint-marker",
+        html: `<span>${index + 1}</span>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      }),
+    }).addTo(state.mapLayers.plotWaypoints);
+    marker.bindPopup(waypoint.name);
+    state.plotWaypointMarkers.push(marker);
+  });
+}
+
+function routeTownColor(status) {
+  if (status === "done") return { color: "#15803d", fillColor: "#22c55e" };
+  if (status === "researching") return { color: "#b91c1c", fillColor: "#ef4444" };
+  if (status === "failed") return { color: "#a16207", fillColor: "#facc15" };
+  return { color: "#475569", fillColor: "#94a3b8" };
+}
+
+function renderPlottedRoute(route) {
+  ensureMap();
+  if (!state.mapLayers || !route) return;
+  state.plotRouteId = route.id;
+  state.mapLayers.plotRoute.clearLayers();
+  state.mapLayers.plotTowns.clearLayers();
+  const latlngs = (route.geometry || []).map((point) => [point.latitude, point.longitude]);
+  if (latlngs.length) {
+    state.plotRouteLine = L.polyline(latlngs, {
+      color: "#38bdf8",
+      weight: 5,
+      opacity: 0.82,
+    }).addTo(state.mapLayers.plotRoute);
+    state.map.fitBounds(state.plotRouteLine.getBounds(), { padding: [28, 28] });
+  }
+  state.plotTownMarkers = [];
+  (route.towns || []).forEach((town) => {
+    const colors = routeTownColor(town.status);
+    const marker = L.circleMarker([town.latitude, town.longitude], {
+      radius: town.status === "researching" ? 9 : 7,
+      color: colors.color,
+      fillColor: colors.fillColor,
+      fillOpacity: 0.85,
+      weight: 2,
+    }).addTo(state.mapLayers.plotTowns);
+    marker.bindPopup(
+      `<strong>${town.name}</strong><br>${town.region}<br>Population: ${(town.population || 0).toLocaleString()}<br>Status: ${town.status}`
+    );
+    state.plotTownMarkers.push(marker);
+  });
+  const done = (route.towns || []).filter((town) => town.status === "done").length;
+  const researching = (route.towns || []).filter((town) => town.status === "researching").length;
+  setText("plot-route-status", `Route ${route.status}${researching ? " – researching now" : ""}`);
+  setText(
+    "plot-route-summary",
+    `${Math.round((route.distance_m || 0) / 1000).toLocaleString()} km • ${route.towns.length} towns • ${done} gathered`
+  );
+}
+
+async function submitPlotTrip() {
+  if (!state.tripId || state.plotWaypoints.length < 2) {
+    setText("plot-route-status", "Choose at least two map points first.");
+    return;
+  }
+  byId("submit-plot-trip").disabled = true;
+  setText("plot-route-status", "Planning route...");
+  const data = await requestJson(`/api/trips/${state.tripId}/plot-routes`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: byId("trip-name").value || "Plotted Trip",
+      waypoints: state.plotWaypoints,
+      min_population: 200,
+      corridor_km: 12,
+    }),
+  });
+  renderPlottedRoute(data.route);
+  pollPlottedRoute();
+}
+
+async function pollPlottedRoute() {
+  if (!state.tripId || !state.plotRouteId) return;
+  const activeTripId = state.tripId;
+  const activeRouteId = state.plotRouteId;
+  if (state.plotPollTimer) {
+    window.clearInterval(state.plotPollTimer);
+  }
+  const poll = async () => {
+    if (state.tripId !== activeTripId || state.plotRouteId !== activeRouteId) {
+      return;
+    }
+    const data = await requestJson(`/api/trips/${activeTripId}/plot-routes/${activeRouteId}`);
+    renderPlottedRoute(data.route);
+    if (data.route.status === "done" || data.route.status === "failed") {
+      window.clearInterval(state.plotPollTimer);
+      state.plotPollTimer = null;
+      byId("submit-plot-trip").disabled = state.plotWaypoints.length < 2;
+      refreshHistory().catch(() => {});
+    }
+  };
+  await poll().catch((error) => setText("plot-route-status", error.message));
+  state.plotPollTimer = window.setInterval(() => {
+    poll().catch((error) => setText("plot-route-status", error.message));
+  }, 2500);
 }
 
 function highlightDiscoveredPlace(place, type = "discovered", blurb = "") {
@@ -526,6 +719,7 @@ async function startTrip() {
     settings: {
       narration_mode: byId("narration-mode").value,
       age_band: byId("age-band").value,
+      trip_mode: tripMode,
       save_history: byId("save-history").checked,
       live_providers: byId("data-mode").value === "live",
       llm_model: selectedLlmModel,
@@ -545,6 +739,16 @@ async function startTrip() {
     setText("coords-status", "Plan mode");
     setText("audio-status", "Ready");
     setText("decision-reason", "Plan mode – click the map");
+    return;
+  }
+  if (tripMode === "plot_trip") {
+    resetPlotTrip();
+    byId("plot-trip-panel").classList.remove("hidden");
+    byId("plot-trip-panel").setAttribute("aria-hidden", "false");
+    setText("trip-status", `Plotting (#${state.tripId})`);
+    setText("coords-status", "Plot trip mode");
+    setText("audio-status", "Ready");
+    setText("decision-reason", "Plot trip mode – choose route points");
     return;
   }
   if (!navigator.geolocation) {
@@ -573,6 +777,7 @@ async function stopTrip() {
   state.tripId = null;
   state.watchId = null;
   clearPlanMarkers();
+  resetPlotTrip();
   if (activeTripId) {
     await requestJson(`/api/trips/${activeTripId}/stop`, {
       method: "POST",
@@ -667,14 +872,21 @@ async function loadTtsOptions() {
 function updateTripModeHint() {
   const mode = byId("trip-mode").value;
   const hint = byId("trip-hint");
+  byId("plot-trip-panel").classList.toggle("hidden", mode !== "plot_trip");
+  byId("plot-trip-panel").setAttribute("aria-hidden", String(mode !== "plot_trip"));
   if (mode === "plan") {
     hint.textContent = "Plan mode: no GPS needed. Click locations on the map to build your itinerary.";
+  } else if (mode === "plot_trip") {
+    hint.textContent = "Plot Trip mode: start the trip, click multiple map points, then submit to calculate the driving route and research towns along it.";
   } else {
     hint.textContent = "Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.";
   }
 }
 
-byId("trip-mode").addEventListener("change", updateTripModeHint);
+byId("trip-mode").addEventListener("change", () => {
+  state.tripMode = byId("trip-mode").value;
+  updateTripModeHint();
+});
 
 byId("start-trip").addEventListener("click", () => {
   startTrip().catch((error) => {
@@ -695,6 +907,15 @@ byId("search-button").addEventListener("click", () => {
   refreshHistory().catch((error) => {
     setText("decision-reason", error.message);
   });
+});
+byId("submit-plot-trip").addEventListener("click", () => {
+  submitPlotTrip().catch((error) => {
+    setText("plot-route-status", error.message);
+    byId("submit-plot-trip").disabled = state.plotWaypoints.length < 2;
+  });
+});
+byId("clear-plot-trip").addEventListener("click", () => {
+  resetPlotTrip();
 });
 byId("toggle-help").addEventListener("click", () => {
   state.helpOpen = !state.helpOpen;
@@ -727,6 +948,7 @@ if ("speechSynthesis" in window) {
 })();
 
 ensureMap();
+renderPlotWaypointList();
 loadFreeModels().catch(() => {});
 loadTtsOptions().catch(() => {});
 refreshHistory().catch(() => {});

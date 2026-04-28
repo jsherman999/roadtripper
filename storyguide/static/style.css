@@ -265,6 +265,46 @@ small {
   margin-top: 20px;
 }
 
+.plot-trip-panel {
+  margin-top: 18px;
+}
+
+.waypoint-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.waypoint-item {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.8fr) minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.86);
+}
+
+.waypoint-item span {
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.88rem;
+}
+
+.plot-waypoint-marker span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 999px;
+  background: #0f766e;
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.4);
+}
+
 .map-panel {
   margin-top: 18px;
 }
@@ -391,7 +431,8 @@ small {
   .feed-grid,
   .control-grid,
   .settings-grid,
-  .help-grid {
+  .help-grid,
+  .waypoint-item {
     grid-template-columns: 1fr;
   }
 
