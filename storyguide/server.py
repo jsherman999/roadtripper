@@ -108,6 +108,12 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/trips/") and parsed.path.endswith("/events"):
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) == 4:
+                trip_id = int(parts[2])
+                self.server.service.clear_trip_events(trip_id)
+                return self._json_response({"cleared": True})
         if parsed.path.startswith("/api/trips/"):
             parts = [part for part in parsed.path.split("/") if part]
             if len(parts) == 3:

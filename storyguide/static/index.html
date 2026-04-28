@@ -42,40 +42,62 @@
             <input id="trip-name" value="Family Road Trip">
           </label>
           <label>
-            Narration mode
-            <select id="narration-mode">
-              <option value="storyteller">Storyteller</option>
-              <option value="quick">Quick Facts</option>
-              <option value="history">History</option>
+            Trip mode
+            <select id="trip-mode">
+              <option value="drive">Drive</option>
+              <option value="plan">Plan</option>
             </select>
           </label>
-          <label>
-            Age band
-            <select id="age-band">
-              <option value="elementary">Elementary</option>
-              <option value="early_elementary">Early Elementary</option>
-              <option value="adult">Adult</option>
-            </select>
-          </label>
-          <label>
-            Data mode
-            <select id="data-mode">
-              <option value="live" selected>Live</option>
-              <option value="demo">Demo</option>
-            </select>
-          </label>
-          <label>
-            Voice
-            <select id="voice-select">
-              <option value="">Auto</option>
-            </select>
-          </label>
-          <label>
-            OpenRouter free model
-            <select id="llm-model-select">
-              <option value="">Default</option>
-            </select>
-          </label>
+        </div>
+        <div class="button-row">
+          <div>
+            <button id="start-trip">Start Trip</button>
+            <button id="stop-trip" disabled>Stop Trip</button>
+          </div>
+          <div class="button-group">
+            <button id="toggle-settings" class="secondary-button" type="button">Settings</button>
+            <button id="toggle-help" class="secondary-button" type="button">Help &amp; About</button>
+            <button id="clear-history" class="danger-button" type="button">Clear History</button>
+          </div>
+        </div>
+        <div id="settings-dropdown" class="dropdown-panel hidden" aria-hidden="true">
+          <div class="settings-grid">
+            <label>
+              Narration mode
+              <select id="narration-mode">
+                <option value="storyteller">Storyteller</option>
+                <option value="quick">Quick Facts</option>
+                <option value="history">History</option>
+              </select>
+            </label>
+            <label>
+              Age band
+              <select id="age-band">
+                <option value="adult">Adult</option>
+                <option value="elementary">Elementary</option>
+                <option value="early_elementary">Early Elementary</option>
+              </select>
+            </label>
+            <label>
+              Data mode
+              <select id="data-mode">
+                <option value="live" selected>Live</option>
+                <option value="demo">Demo</option>
+              </select>
+            </label>
+            <label>
+              Voice
+              <select id="voice-select">
+                <option value="">Auto</option>
+              </select>
+            </label>
+            <label class="span-2">
+              OpenRouter free model
+              <select id="llm-model-select">
+                <option value="">Default</option>
+              </select>
+            </label>
+          </div>
           <label class="checkbox">
             <input id="save-history" type="checkbox" checked>
             Save searchable trip history
@@ -84,14 +106,15 @@
             <input id="speak-aloud" type="checkbox" checked>
             Speak narration through laptop speakers
           </label>
+          <div class="archive-section">
+            <div class="search-row">
+              <input id="search-query" placeholder="Search towns, history, landmarks">
+              <button id="search-button">Search</button>
+            </div>
+            <div id="history-results" class="history-list"></div>
+          </div>
         </div>
-        <div class="button-row">
-          <button id="start-trip">Start Trip</button>
-          <button id="stop-trip" disabled>Stop Trip</button>
-          <button id="refresh-history">Refresh History</button>
-          <button id="toggle-help" class="secondary-button" type="button">Help &amp; About</button>
-        </div>
-        <p class="hint">
+        <p class="hint" id="trip-hint">
           Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.
         </p>
       </section>
@@ -131,9 +154,9 @@ zsh ./deploy_storyguide.sh</code></pre>
           <article>
             <h3>Interface tour</h3>
             <p>
-              <strong>Current place</strong> shows the nearest town and facts. <strong>Nearby towns</strong> tracks
-              towns near your last live location or map selection. <strong>Live narration</strong> shows spoken items, and <strong>Archive</strong>
-              searches saved commentary.
+              The <strong>Map</strong> shows your live location and nearby places. <strong>Live narration</strong> shows
+              spoken items, and <strong>Archive</strong> searches saved commentary. Click the map or a marker to narrate
+              that location.
             </p>
           </article>
           <article>
@@ -152,19 +175,7 @@ launchctl bootout gui/$(id -u) /Users/jay/Library/LaunchAgents/com.jay.storyguid
         </div>
       </section>
 
-      <section class="dashboard">
-        <article class="panel">
-          <p class="panel-label">Current place</p>
-          <h2 id="current-place-name">No active trip</h2>
-          <p id="current-place-details">Start a trip to see the latest nearby town.</p>
-        </article>
-        <article class="panel accent">
-          <p class="panel-label">Nearby towns</p>
-          <h2 id="upcoming-name">No nearby towns yet</h2>
-          <p id="upcoming-details">Tap a town to hear it now, or keep driving and it will be narrated when you get near it.</p>
-          <div id="nearby-town-list" class="nearby-town-list"></div>
-        </article>
-      </section>
+
 
       <section class="panel map-panel">
         <div class="panel-head">
@@ -172,9 +183,14 @@ launchctl bootout gui/$(id -u) /Users/jay/Library/LaunchAgents/com.jay.storyguid
             <p class="panel-label">Map</p>
             <h2>Live trip map</h2>
           </div>
-          <p class="microcopy">Click the map or a marker to narrate that location and add it to the trip.</p>
+          <p id="map-hint" class="microcopy">Click the map or a marker to narrate that location and add it to the trip.</p>
         </div>
-        <div id="trip-map" class="trip-map" aria-label="Live trip map"></div>
+        <div id="trip-map" class="trip-map" aria-label="Live trip map">
+          <div id="map-loading" class="map-loading hidden" aria-hidden="true">
+            <span class="spinner"></span>
+            <span>Investigating location...</span>
+          </div>
+        </div>
       </section>
 
       <section class="feed-grid">
@@ -187,20 +203,6 @@ launchctl bootout gui/$(id -u) /Users/jay/Library/LaunchAgents/com.jay.storyguid
             <p id="decision-reason" class="microcopy">No narration yet.</p>
           </div>
           <div id="feed" class="feed-list"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <div>
-              <p class="panel-label">Archive</p>
-              <h2>Search trip notes</h2>
-            </div>
-          </div>
-          <div class="search-row">
-            <input id="search-query" placeholder="Search towns, history, landmarks">
-            <button id="search-button">Search</button>
-          </div>
-          <div id="history-results" class="history-list"></div>
         </article>
       </section>
     </main>

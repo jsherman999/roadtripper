@@ -7,7 +7,7 @@ class TripSettings:
     kid_mode: bool = True
     save_history: bool = True
     narration_mode: str = "storyteller"
-    age_band: str = "elementary"
+    age_band: str = "adult"
     live_providers: bool = False
     llm_model: str = ""
     minimum_interval_minutes: int = 3

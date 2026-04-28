@@ -99,6 +99,11 @@ class Storage:
             self.connection.execute("DELETE FROM trips WHERE id = ?", (trip_id,))
             self.connection.commit()
 
+    def clear_events(self, trip_id: int):
+        with self.lock:
+            self.connection.execute("DELETE FROM narration_events WHERE trip_id = ?", (trip_id,))
+            self.connection.commit()
+
     def add_location(self, trip_id: int, latitude: float, longitude: float, speed_kph=None, heading_deg=None) -> Dict:
         recorded_at = utcnow()
         with self.lock:

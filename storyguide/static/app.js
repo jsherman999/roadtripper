@@ -3,6 +3,7 @@ const state = {
   watchId: null,
   speakAloud: true,
   helpOpen: false,
+  settingsOpen: false,
   selectedVoiceName: "",
   voices: [],
   map: null,
@@ -15,7 +16,16 @@ const state = {
   currentAudio: null,
   ttsProvider: "browser",
   userNarrationActive: false,
+  tripMode: "drive",
+  planMarkers: [],
 };
+
+function detectPlatform() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return "mobile";
+  if (/Macintosh/i.test(ua)) return "mac";
+  return "desktop";
+}
 
 function byId(id) {
   return document.getElementById(id);
@@ -178,6 +188,14 @@ function appendFeed(event) {
   feed.prepend(item);
 }
 
+function showMapLoading() {
+  byId("map-loading").classList.remove("hidden");
+}
+
+function hideMapLoading() {
+  byId("map-loading").classList.add("hidden");
+}
+
 function ensureMap() {
   if (state.mapReady || !window.L) {
     return;
@@ -192,6 +210,7 @@ function ensureMap() {
     queue: L.layerGroup().addTo(state.map),
     points: L.layerGroup().addTo(state.map),
     discovered: L.layerGroup().addTo(state.map),
+    plan: L.layerGroup().addTo(state.map),
   };
   state.map.on("click", (event) => {
     narrateMapLocation({
@@ -202,6 +221,25 @@ function ensureMap() {
     });
   });
   state.mapReady = true;
+}
+
+function addPlanMarker(latitude, longitude, name) {
+  if (!state.mapLayers) return;
+  const marker = L.marker([latitude, longitude], {
+    icon: L.divIcon({
+      className: "plan-marker",
+      html: `<span class="plan-marker-dot"></span>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    }),
+  }).addTo(state.mapLayers.plan);
+  marker.bindPopup(name);
+  state.planMarkers.push(marker);
+}
+
+function clearPlanMarkers() {
+  state.planMarkers.forEach((m) => state.mapLayers.plan.removeLayer(m));
+  state.planMarkers = [];
 }
 
 function highlightDiscoveredPlace(place, type = "discovered", blurb = "") {
@@ -266,7 +304,7 @@ function renderMap(data, payload) {
       fillOpacity: 0.8,
       weight: 2,
     }).addTo(state.mapLayers.queue);
-    marker.bindPopup(`<strong>${town.name}</strong><br>${town.region}<br>${town.distance_km} km away`);
+    marker.bindPopup(`<strong>${town.name}</strong><br>${town.region}<br>${town.distance_km} km away${town.high_school_enrollment ? '<br>HS enrollment: ' + town.high_school_enrollment.toLocaleString() : ''}`);
     marker.on("click", () => {
       narrateTownNow(town).catch((error) => {
         setText("decision-reason", error.message);
@@ -303,10 +341,11 @@ function renderMap(data, payload) {
 
 function renderNearbyTowns(towns) {
   const list = byId("nearby-town-list");
+  if (!list) return;
   list.innerHTML = "";
   if (!towns || !towns.length) {
     setText("upcoming-name", "No nearby towns yet");
-    setText("upcoming-details", "Drive a little farther to build a nearby-town queue.");
+    setText("upcoming-details", state.tripMode === "plan" ? "Click the map to explore places and build your itinerary." : "Drive a little farther to build a nearby-town queue.");
     return;
   }
   setText("upcoming-name", `${towns.length} nearby towns`);
@@ -315,7 +354,10 @@ function renderNearbyTowns(towns) {
     const button = document.createElement("button");
     button.className = "town-chip";
     button.type = "button";
-    button.innerHTML = `<strong>${town.name}</strong><span>${town.region} • ${town.distance_km} km</span>`;
+    const enrollmentText = town.high_school_enrollment
+      ? ` • HS: ${town.high_school_enrollment.toLocaleString()}`
+      : "";
+    button.innerHTML = `<strong>${town.name}</strong><span>${town.region} • ${town.distance_km} km${enrollmentText}</span>`;
     button.addEventListener("click", () => narrateTownNow(town));
     list.appendChild(button);
   });
@@ -362,33 +404,41 @@ async function narrateMapLocation(location) {
   if (!state.tripId) {
     return;
   }
-  const data = await requestJson(`/api/trips/${state.tripId}/narrate-place`, {
-    method: "POST",
-    body: JSON.stringify(location),
-  });
-  if (data.event) {
-    appendFeed(data.event);
-    state.userNarrationActive = true;
-    speak(data.event.script, () => {
-      state.userNarrationActive = false;
+  showMapLoading();
+  try {
+    const data = await requestJson(`/api/trips/${state.tripId}/narrate-place`, {
+      method: "POST",
+      body: JSON.stringify(location),
     });
-    setTimeout(() => { state.userNarrationActive = false; }, 60000);
-    renderNearbyContext(data);
-    renderMap(data, {
-      latitude: data.selected_place.latitude,
-      longitude: data.selected_place.longitude,
-    });
-    highlightDiscoveredPlace(
-      {
-        name: data.selected_place.name,
-        region: data.selected_place.region,
+    if (data.event) {
+      appendFeed(data.event);
+      state.userNarrationActive = true;
+      speak(data.event.script, () => {
+        state.userNarrationActive = false;
+      });
+      setTimeout(() => { state.userNarrationActive = false; }, 60000);
+      renderNearbyContext(data);
+      renderMap(data, {
         latitude: data.selected_place.latitude,
         longitude: data.selected_place.longitude,
-      },
-      location.kind ? "point" : "town",
-      location.blurb || ""
-    );
-    refreshHistory().catch(() => {});
+      });
+      highlightDiscoveredPlace(
+        {
+          name: data.selected_place.name,
+          region: data.selected_place.region,
+          latitude: data.selected_place.latitude,
+          longitude: data.selected_place.longitude,
+        },
+        location.kind ? "point" : "town",
+        location.blurb || ""
+      );
+      if (state.tripMode === "plan") {
+        addPlanMarker(data.selected_place.latitude, data.selected_place.longitude, data.selected_place.name);
+      }
+      refreshHistory().catch(() => {});
+    }
+  } finally {
+    hideMapLoading();
   }
 }
 
@@ -439,20 +489,9 @@ async function handleLocation(position) {
   if (state.tripId !== activeTripId) {
     return;
   }
-  const place = data.current_place;
-  setText("current-place-name", `${place.name}, ${place.region}`);
-  setText(
-    "current-place-details",
-    [
-      place.population ? `${place.population.toLocaleString()} people` : "",
-      place.known_for ? `Known for ${place.known_for}` : "",
-      place.history ? `History: ${place.history}` : "",
-    ]
-      .filter(Boolean)
-      .join(" • ")
-  );
-  renderNearbyTowns(data.nearby_towns || []);
-  renderMap(data, payload);
+  if (!state.userNarrationActive) {
+    renderMap(data, payload);
+  }
   setText("decision-reason", data.decision.reason.replace(/_/g, " "));
   if (data.event) {
     appendFeed(data.event);
@@ -479,6 +518,8 @@ function handleLocationError(error) {
 }
 
 async function startTrip() {
+  const tripMode = byId("trip-mode").value;
+  state.tripMode = tripMode;
   const selectedLlmModel = byId("llm-model-select").value;
   const payload = {
     name: byId("trip-name").value || "Road Trip",
@@ -499,6 +540,13 @@ async function startTrip() {
   byId("start-trip").disabled = true;
   byId("stop-trip").disabled = false;
   setText("trip-status", `Running (#${state.tripId})`);
+  if (tripMode === "plan") {
+    setText("trip-status", `Planning (#${state.tripId})`);
+    setText("coords-status", "Plan mode");
+    setText("audio-status", "Ready");
+    setText("decision-reason", "Plan mode – click the map");
+    return;
+  }
   if (!navigator.geolocation) {
     throw new Error("Geolocation is not available in this browser");
   }
@@ -524,6 +572,7 @@ async function stopTrip() {
   }
   state.tripId = null;
   state.watchId = null;
+  clearPlanMarkers();
   if (activeTripId) {
     await requestJson(`/api/trips/${activeTripId}/stop`, {
       method: "POST",
@@ -534,7 +583,20 @@ async function stopTrip() {
   byId("stop-trip").disabled = true;
   setText("trip-status", "Stopped");
   setText("audio-status", "Ready");
-  renderNearbyTowns([]);
+}
+
+async function clearHistory() {
+  if (!state.tripId) {
+    setText("decision-reason", "No active trip");
+    return;
+  }
+  if (!window.confirm("Clear all history for this trip?")) {
+    return;
+  }
+  await fetch(`/api/trips/${state.tripId}/events`, { method: "DELETE" });
+  byId("feed").innerHTML = "";
+  byId("history-results").innerHTML = `<p class="empty-state">History cleared.</p>`;
+  setText("decision-reason", "History cleared");
 }
 
 async function loadFreeModels() {
@@ -602,6 +664,18 @@ async function loadTtsOptions() {
   populateVoices();
 }
 
+function updateTripModeHint() {
+  const mode = byId("trip-mode").value;
+  const hint = byId("trip-hint");
+  if (mode === "plan") {
+    hint.textContent = "Plan mode: no GPS needed. Click locations on the map to build your itinerary.";
+  } else {
+    hint.textContent = "Tip: the browser will ask for location access when the trip starts. Narration begins only after you allow it.";
+  }
+}
+
+byId("trip-mode").addEventListener("change", updateTripModeHint);
+
 byId("start-trip").addEventListener("click", () => {
   startTrip().catch((error) => {
     setText("trip-status", error.message);
@@ -612,8 +686,8 @@ byId("stop-trip").addEventListener("click", () => {
     setText("trip-status", error.message);
   });
 });
-byId("refresh-history").addEventListener("click", () => {
-  refreshHistory().catch((error) => {
+byId("clear-history").addEventListener("click", () => {
+  clearHistory().catch((error) => {
     setText("decision-reason", error.message);
   });
 });
@@ -627,6 +701,11 @@ byId("toggle-help").addEventListener("click", () => {
   byId("help-panel").classList.toggle("hidden", !state.helpOpen);
   byId("help-panel").setAttribute("aria-hidden", String(!state.helpOpen));
 });
+byId("toggle-settings").addEventListener("click", () => {
+  state.settingsOpen = !state.settingsOpen;
+  byId("settings-dropdown").classList.toggle("hidden", !state.settingsOpen);
+  byId("settings-dropdown").setAttribute("aria-hidden", String(!state.settingsOpen));
+});
 byId("voice-select").addEventListener("change", (event) => {
   state.selectedVoiceName = event.target.value;
 });
@@ -638,6 +717,15 @@ if ("speechSynthesis" in window) {
   populateVoices();
   window.speechSynthesis.onvoiceschanged = populateVoices;
 }
+
+(function initPlatformDefaults() {
+  const platform = detectPlatform();
+  const defaultMode = platform === "mac" ? "plan" : "drive";
+  state.tripMode = defaultMode;
+  byId("trip-mode").value = defaultMode;
+  updateTripModeHint();
+})();
+
 ensureMap();
 loadFreeModels().catch(() => {});
 loadTtsOptions().catch(() => {});

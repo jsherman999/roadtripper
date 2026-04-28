@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from typing import Dict, List, Optional
@@ -193,6 +194,33 @@ def build_openai_provider_from_env(env: Optional[Dict[str, str]] = None) -> Opti
     return None
 
 
+_CLEAN_PREAMBLE = re.compile(
+    r"^(?:here\s*(?:'s|is|are)\s*a\s*.+?\s*(?:rewrite|version|narration)[:\s]*\*?\*?\s*)",
+    re.IGNORECASE,
+)
+_CLEAN_BOLD_ONLY = re.compile(r"^\*{1,2}\s*")
+_CLEAN_TRAILING_BOLD = re.compile(r"\s*\*{1,2}$")
+_CLEAN_KEY_CHANGES = re.compile(
+    r"\s*\*{0,2}Key\s+changes?\s*:?\*{0,2}\s*[-–—].*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def clean_narration(text: str) -> str:
+    if not text:
+        return text
+    text = _CLEAN_PREAMBLE.sub("", text)
+    text = _CLEAN_KEY_CHANGES.sub("", text)
+    text = _CLEAN_BOLD_ONLY.sub("", text)
+    text = _CLEAN_TRAILING_BOLD.sub("", text)
+    text = text.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ('"', "'"):
+        inner = text[1:-1].strip()
+        if inner:
+            text = inner
+    return text
+
+
 def _system_prompt(context: Dict) -> str:
     audience = context.get("age_band", "elementary")
     if audience == "adult":
@@ -207,12 +235,17 @@ def _system_prompt(context: Dict) -> str:
         "Mine it aggressively for specific, concrete facts. "
         "Prioritize: population numbers, founding year, notable people born here, "
         "historical events, what the town is known for economically or culturally, "
-        "nearby attractions, geographic features, and local trivia. "
+        "nearby attractions, geographic features, school district name, high school enrollment, "
+        "and local trivia. "
+        "If the raw extract mentions a school district or high school enrollment, always include it. "
         "If the raw extract contains detailed information, use it — do not summarize vaguely. "
         "Lead with the most interesting, surprising, or specific fact first. "
         "If a field in the structured context is null or empty, skip it entirely — do not invent or generalize. "
         "Keep narration to 2-5 concise sentences. "
-        "Use a tone that is %s." % tone
+        "Use a tone that is %s. "
+        "IMPORTANT: Output ONLY the final narration text. "
+        "Do NOT include any preamble, commentary, 'Key changes', bullet points, "
+        "or notes about your editing process." % tone
     )
 
 
@@ -237,5 +270,8 @@ def _build_prompt(fallback_script: str, context: Dict) -> str:
         "Skip any topic where data is missing. "
         "Do not add filler like \"a small town with its own character\" when you have no facts.\n\n"
         "Fallback script:\n%s\n\n"
-        "Structured Context JSON:\n%s%s\n" % (fallback_script, json.dumps(context, sort_keys=True), raw_section)
+        "Structured Context JSON:\n%s%s\n\n"
+        "Output ONLY the rewritten narration. No preamble, no 'Key changes', no bullet-point notes." % (
+            fallback_script, json.dumps(context, sort_keys=True), raw_section
+        )
     )

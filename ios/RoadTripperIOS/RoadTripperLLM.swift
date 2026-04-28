@@ -294,7 +294,7 @@ private func systemPrompt(context: NarrationLLMContext) -> String {
     default:
         tone = "friendly, age-appropriate, and fun for children"
     }
-    return "You write short location-aware road trip narration. Stay factual, do not invent facts beyond the provided context, keep it to 2-5 concise sentences, and use a tone that is \(tone)."
+    return "You write short location-aware road trip narration. Stay factual, do not invent facts beyond the provided context, keep it to 2-5 concise sentences, and use a tone that is \(tone). If the context mentions a school district or high school enrollment, always include it."
 }
 
 private func buildPrompt(fallbackScript: String, context: NarrationLLMContext) -> String {

@@ -8,3 +8,4 @@ storyguide.stderr.log
 .DS_Store
 xcuserdata/
 *.xcuserstate
+storyguide/data/.build_cache/

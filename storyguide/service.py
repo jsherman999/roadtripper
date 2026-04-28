@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
-from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_openai_provider_from_env
+from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_openai_provider_from_env, clean_narration
+from storyguide.enrollment import EnrollmentDB
 from storyguide.models import TripSettings
 from storyguide.narration import NarrationBuilder
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
@@ -24,8 +25,13 @@ class StoryGuideService:
         openai_provider: Optional[BaseNarrationLLM] = None,
     ):
         self.storage = storage or Storage()
+        self.enrollment_db = EnrollmentDB()
         self.demo_provider = demo_provider or DemoPlaceProvider()
-        self.live_provider = live_provider or LivePlaceProvider(self.demo_provider, allow_demo_fallback=False)
+        self.live_provider = live_provider or LivePlaceProvider(
+            self.demo_provider,
+            allow_demo_fallback=False,
+            enrollment_db=self.enrollment_db,
+        )
         self.relevance = relevance_engine or RelevanceEngine()
         self.narration_builder = narration_builder or NarrationBuilder()
         self.route_forecaster = route_forecaster or RouteForecaster()
@@ -46,6 +52,9 @@ class StoryGuideService:
 
     def delete_trip(self, trip_id: int):
         self.storage.delete_trip(trip_id)
+
+    def clear_trip_events(self, trip_id: int):
+        self.storage.clear_events(trip_id)
 
     def history(self, query: str = "", trip_id: Optional[int] = None):
         return self.storage.search_events(query=query, trip_id=trip_id)
@@ -247,4 +256,4 @@ class StoryGuideService:
             llm_script = self.llm_provider.generate_narration(fallback_script, context)
         else:
             llm_script = self.llm_provider.generate_narration(fallback_script, context, model_override=model_override)
-        return llm_script or fallback_script
+        return clean_narration(llm_script) or fallback_script

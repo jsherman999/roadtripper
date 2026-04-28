@@ -43,9 +43,8 @@ body {
   margin-bottom: 8px;
 }
 
-.dashboard,
 .feed-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   margin-top: 18px;
 }
 
@@ -118,8 +117,18 @@ h1 {
 
 .control-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-grid .span-2 {
+  grid-column: span 2;
 }
 
 label {
@@ -130,7 +139,11 @@ label {
 }
 
 label.checkbox {
-  justify-content: center;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  font-size: 0.86rem;
 }
 
 input,
@@ -166,6 +179,24 @@ button:disabled {
   background: linear-gradient(135deg, var(--accent), #c2410c);
 }
 
+.danger-button {
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+}
+
+.icon-button {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  transition: transform 0.2s;
+}
+
+.icon-button.open {
+  transform: rotate(180deg);
+}
+
 .button-row,
 .search-row,
 .panel-head {
@@ -177,6 +208,11 @@ button:disabled {
 
 .button-row {
   margin-top: 10px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
 }
 
 .search-row {
@@ -193,6 +229,38 @@ small {
   color: rgba(226, 232, 240, 0.68);
 }
 
+.dropdown-panel {
+  margin-top: 12px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.archive-section {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.collapsible {
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  overflow: hidden;
+}
+
+.collapsible.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+.collapsible:not(.collapsed) {
+  max-height: 600px;
+  opacity: 1;
+}
+
 .help-panel {
   margin-top: 20px;
 }
@@ -206,6 +274,38 @@ small {
   border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--border);
+  position: relative;
+}
+
+.map-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--accent);
+  border-radius: 16px;
+  padding: 14px 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.92rem;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .help-grid {
@@ -288,9 +388,9 @@ small {
 
 @media (max-width: 900px) {
   .hero,
-  .dashboard,
   .feed-grid,
   .control-grid,
+  .settings-grid,
   .help-grid {
     grid-template-columns: 1fr;
   }

@@ -7,6 +7,7 @@ import urllib.request
 from dataclasses import replace
 from typing import Dict, Iterable, List, Optional
 
+from storyguide.enrollment import EnrollmentDB
 from storyguide.models import NearbyPlace, PlaceProfile
 from storyguide.relevance import haversine_km
 
@@ -206,10 +207,12 @@ class LivePlaceProvider:
         fallback: DemoPlaceProvider,
         summary_provider: Optional[LiveWikipediaSummaryProvider] = None,
         allow_demo_fallback: bool = False,
+        enrollment_db: Optional[EnrollmentDB] = None,
     ):
         self.fallback = fallback
         self.summary_provider = summary_provider or LiveWikipediaSummaryProvider()
         self.allow_demo_fallback = allow_demo_fallback
+        self.enrollment_db = enrollment_db
 
     def known_places(self) -> List[PlaceProfile]:
         return self.fallback.known_places() if self.allow_demo_fallback else []
@@ -343,17 +346,23 @@ class LivePlaceProvider:
             if not name or key in seen:
                 continue
             seen.add(key)
-            results.append(
-                {
-                    "name": name,
-                    "region": region,
-                    "latitude": town_lat,
-                    "longitude": town_lon,
-                    "distance_km": round(distance, 1),
-                    "country": address.get("country", "USA"),
-                    "source": "live",
-                }
-            )
+            result_dict = {
+                "name": name,
+                "region": region,
+                "latitude": town_lat,
+                "longitude": town_lon,
+                "distance_km": round(distance, 1),
+                "country": address.get("country", "USA"),
+                "source": "live",
+            }
+            if self.enrollment_db and self.enrollment_db.loaded:
+                enrollment = (
+                    self.enrollment_db.nearby_enrollment(town_lat, town_lon, region)
+                    or self.enrollment_db.town_enrollment(name, region)
+                )
+                if enrollment:
+                    result_dict["high_school_enrollment"] = enrollment
+            results.append(result_dict)
         results.sort(key=lambda item: item["distance_km"])
         if not results:
             return self.fallback.nearby_towns(latitude, longitude, limit=limit, max_distance_km=max_distance_km) if self.allow_demo_fallback else []
@@ -363,45 +372,58 @@ class LivePlaceProvider:
         try:
             summary_data = self.summary_provider.fetch_summary("%s, %s" % (place.name, place.region))
         except OSError:
-            return place
-        if not summary_data:
-            try:
-                summary_data = self.summary_provider.fetch_summary(place.name)
-            except OSError:
-                return place
-        if not summary_data:
-            return place
-        extract = summary_data.get("extract", "")
-        description = summary_data.get("description", "")
-        place = replace(place, raw_extract=extract)
-        population = _extract_population(extract) or place.population
-        fragments = [fragment.strip() for fragment in extract.split(".") if fragment.strip()]
-        known_for = ""
-        history = ""
-        trivia = list(place.trivia)
-        non_population_fragments = []
-        for fragment in fragments:
-            if _is_place_is_a_fragment(fragment):
-                continue
-            if _extract_population(fragment) is not None:
-                continue
-            non_population_fragments.append(fragment)
-        for fragment in non_population_fragments:
-            if not history and _is_history_fragment(fragment):
-                history = fragment
-            elif not known_for and len(fragment) > 30:
-                known_for = fragment
-            elif len(trivia) < 3 and len(fragment) > 20:
-                trivia.append(fragment)
-        if not known_for and description and not _is_place_is_a_fragment(description):
-            known_for = description
-        known_for = known_for or place.known_for
-        history = history or place.history
-        return replace(
-            place,
-            population=population,
-            known_for=known_for,
-            history=history,
-            trivia=trivia,
-            source="live",
-        )
+            pass
+        else:
+            if not summary_data:
+                try:
+                    summary_data = self.summary_provider.fetch_summary(place.name)
+                except OSError:
+                    summary_data = None
+            if summary_data:
+                extract = summary_data.get("extract", "")
+                description = summary_data.get("description", "")
+                place = replace(place, raw_extract=extract)
+                population = _extract_population(extract) or place.population
+                fragments = [fragment.strip() for fragment in extract.split(".") if fragment.strip()]
+                known_for = ""
+                history = ""
+                trivia = list(place.trivia)
+                non_population_fragments = []
+                for fragment in fragments:
+                    if _is_place_is_a_fragment(fragment):
+                        continue
+                    if _extract_population(fragment) is not None:
+                        continue
+                    non_population_fragments.append(fragment)
+                for fragment in non_population_fragments:
+                    if not history and _is_history_fragment(fragment):
+                        history = fragment
+                    elif not known_for and len(fragment) > 30:
+                        known_for = fragment
+                    elif len(trivia) < 3 and len(fragment) > 20:
+                        trivia.append(fragment)
+                if not known_for and description and not _is_place_is_a_fragment(description):
+                    known_for = description
+                known_for = known_for or place.known_for
+                history = history or place.history
+                place = replace(
+                    place,
+                    population=population,
+                    known_for=known_for,
+                    history=history,
+                    trivia=trivia,
+                    source="live",
+                )
+
+        high_school_enrollment = place.high_school_enrollment
+        if self.enrollment_db and self.enrollment_db.loaded:
+            enrollment = (
+                self.enrollment_db.nearby_enrollment(
+                    place.latitude, place.longitude, place.region
+                )
+                or self.enrollment_db.town_enrollment(place.name, place.region)
+            )
+            if enrollment:
+                high_school_enrollment = enrollment
+
+        return replace(place, high_school_enrollment=high_school_enrollment)
