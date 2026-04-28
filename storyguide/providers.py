@@ -357,8 +357,8 @@ class LivePlaceProvider:
             }
             if self.enrollment_db and self.enrollment_db.loaded:
                 enrollment = (
-                    self.enrollment_db.nearby_enrollment(town_lat, town_lon, region)
-                    or self.enrollment_db.town_enrollment(name, region)
+                    self.enrollment_db.town_enrollment(name, region)
+                    or self.enrollment_db.nearby_enrollment(town_lat, town_lon, region)
                 )
                 if enrollment:
                     result_dict["high_school_enrollment"] = enrollment
@@ -418,10 +418,10 @@ class LivePlaceProvider:
         high_school_enrollment = place.high_school_enrollment
         if self.enrollment_db and self.enrollment_db.loaded:
             enrollment = (
-                self.enrollment_db.nearby_enrollment(
+                self.enrollment_db.town_enrollment(place.name, place.region)
+                or self.enrollment_db.nearby_enrollment(
                     place.latitude, place.longitude, place.region
                 )
-                or self.enrollment_db.town_enrollment(place.name, place.region)
             )
             if enrollment:
                 high_school_enrollment = enrollment

@@ -39,7 +39,7 @@ class NarrationBuilder:
             elif place.history and not _is_generic_place_description(place.history):
                 bits.append("Background: %s." % sanitize_text(place.history))
             if place.high_school_enrollment:
-                bits.append("A local high school enrolls roughly {:,} students.".format(place.high_school_enrollment))
+                bits.append("Local high schools enroll roughly {:,} students.".format(place.high_school_enrollment))
             landmark_name = nearby[0].name if nearby else (place.landmarks[0] if place.landmarks else None)
             if landmark_name:
                 bits.append("A notable nearby stop is %s." % landmark_name)
@@ -57,7 +57,7 @@ class NarrationBuilder:
             elif place.history and not _is_generic_place_description(place.history):
                 bits.append("Fun history note: %s." % sanitize_text(place.history))
             if place.high_school_enrollment:
-                bits.append("One local high school serves about {:,} students.".format(place.high_school_enrollment))
+                bits.append("Local high schools serve about {:,} students.".format(place.high_school_enrollment))
             landmark_name = nearby[0].name if nearby else (place.landmarks[0] if place.landmarks else None)
             if landmark_name:
                 bits.append("Keep an eye out for %s nearby." % landmark_name)
