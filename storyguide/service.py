@@ -1,8 +1,10 @@
+import threading
+from dataclasses import replace
 from typing import Dict, Optional
 
 from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_openai_provider_from_env, clean_narration
 from storyguide.enrollment import EnrollmentDB
-from storyguide.models import TripSettings
+from storyguide.models import PlaceProfile, TripSettings
 from storyguide.narration import NarrationBuilder
 from storyguide.plotting import ResilientRoutingProvider, TownGazetteer
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
@@ -26,6 +28,7 @@ class StoryGuideService:
         openai_provider: Optional[BaseNarrationLLM] = None,
         routing_provider: Optional[ResilientRoutingProvider] = None,
         town_gazetteer: Optional[TownGazetteer] = None,
+        start_background_jobs: bool = True,
     ):
         self.storage = storage or Storage()
         self.enrollment_db = EnrollmentDB()
@@ -43,6 +46,8 @@ class StoryGuideService:
         self.openai_provider = openai_provider if openai_provider is not None else build_openai_provider_from_env()
         self.routing_provider = routing_provider or ResilientRoutingProvider()
         self.town_gazetteer = town_gazetteer or TownGazetteer()
+        self.start_background_jobs = start_background_jobs
+        self._plot_research_threads = {}
 
     def create_trip(self, name: str, settings_payload: Optional[Dict] = None) -> Dict:
         settings = TripSettings.from_dict(settings_payload)
@@ -107,7 +112,42 @@ class StoryGuideService:
         )
         self.storage.add_plotted_waypoints(route["id"], plan.waypoints)
         self.storage.add_route_towns(route["id"], towns)
+        if self.start_background_jobs and payload.get("auto_research", True):
+            self.start_plotted_route_research(trip_id, route["id"])
         return self.storage.get_plotted_route(route["id"])
+
+    def start_plotted_route_research(self, trip_id: int, route_id: int) -> Dict:
+        route = self.get_plotted_route(trip_id, route_id)
+        existing = self._plot_research_threads.get(route_id)
+        if existing and existing.is_alive():
+            return route
+        thread = threading.Thread(target=self.run_plotted_route_research, args=(route_id,), daemon=True)
+        self._plot_research_threads[route_id] = thread
+        thread.start()
+        return self.storage.get_plotted_route(route_id) or route
+
+    def run_plotted_route_research(self, route_id: int) -> Dict:
+        route = self.storage.get_plotted_route(route_id)
+        if not route:
+            raise KeyError("Route not found")
+        trip = self.storage.get_trip(route["trip_id"])
+        if not trip:
+            raise KeyError("Trip not found")
+        pending = [town for town in route["towns"] if town["status"] in ("pending", "failed")]
+        if not pending:
+            return self.storage.set_route_status(route_id, "done") or route
+        self.storage.set_route_status(route_id, "researching")
+        failures = 0
+        for town in pending:
+            try:
+                self.storage.update_route_town(town["id"], "researching", research=town.get("research") or {})
+                research = self._research_route_town(trip, town)
+                self.storage.update_route_town(town["id"], "done", research=research)
+            except Exception as exc:  # keep one bad town from stopping the rest of the route
+                failures += 1
+                self.storage.update_route_town(town["id"], "failed", error=str(exc))
+        status_error = "%s town research item(s) failed" % failures if failures else None
+        return self.storage.set_route_status(route_id, "done", error=status_error)
 
     def llm_free_models(self) -> Dict:
         models = list(self.llm_provider.list_free_models())
@@ -153,6 +193,60 @@ class StoryGuideService:
         if len(normalized) < 2:
             raise ValueError("Plot trip needs at least two map points")
         return normalized
+
+    def _research_route_town(self, trip: Dict, town: Dict) -> Dict:
+        settings = TripSettings.from_dict(trip["settings"])
+        provider = self.live_provider if settings.live_providers else self.demo_provider
+        place = PlaceProfile(
+            name=town["name"],
+            region=town["region"],
+            country=town.get("country", "USA"),
+            latitude=float(town["latitude"]),
+            longitude=float(town["longitude"]),
+            population=town.get("population"),
+            source=town.get("source", "route"),
+        )
+        place = provider.enrich(place)
+        if town.get("population") and not place.population:
+            place = replace(place, population=town["population"])
+        nearby_points = provider.nearby_places(place.latitude, place.longitude)
+        narration = self.narration_builder.build_current_place_script(
+            place,
+            nearby_points,
+            mode=settings.narration_mode,
+            age_band=settings.age_band,
+        )
+        narration["script"] = self._maybe_llm_narrate(
+            narration["script"],
+            {
+                "age_band": settings.age_band,
+                "narration_mode": settings.narration_mode,
+                "kind": "plot_trip_research",
+                "place": place.to_dict(),
+                "nearby_points": [point.to_dict() for point in nearby_points],
+            },
+            settings.llm_model,
+        )
+        event = None
+        if settings.save_history:
+            event = self.storage.add_event(
+                trip_id=trip["id"],
+                place_name=place.name,
+                region=place.region,
+                title=narration["title"],
+                script=narration["script"],
+                trigger_type="plot_trip_research",
+                latitude=place.latitude,
+                longitude=place.longitude,
+                score=0.75,
+                tags=narration["tags"] + ["plot_trip", "advance_research"],
+            )
+        return {
+            "place": place.to_dict(),
+            "nearby_points": [point.to_dict() for point in nearby_points],
+            "narration": narration,
+            "event_id": event["id"] if event else None,
+        }
 
     def narrate_selected_place(self, trip_id: int, place_payload: Dict) -> Dict:
         trip = self.storage.get_trip(trip_id)

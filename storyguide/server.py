@@ -122,6 +122,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     return self._json_response({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
                 return self._json_response({"route": route}, status=HTTPStatus.CREATED)
+        if parsed.path.startswith("/api/trips/") and parsed.path.endswith("/research"):
+            parts = [part for part in parsed.path.split("/") if part]
+            if len(parts) == 6 and parts[3] == "plot-routes":
+                trip_id = int(parts[2])
+                route_id = int(parts[4])
+                try:
+                    route = self.server.service.start_plotted_route_research(trip_id, route_id)
+                except KeyError:
+                    return self._json_response({"error": "Route not found"}, status=HTTPStatus.NOT_FOUND)
+                return self._json_response({"route": route})
         if parsed.path.startswith("/api/trips/") and parsed.path.endswith("/stop"):
             parts = [part for part in parsed.path.split("/") if part]
             if len(parts) == 4:

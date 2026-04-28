@@ -33,6 +33,7 @@ class Phase7PlotTripTests(unittest.TestCase):
             storage=Storage(":memory:"),
             routing_provider=FakeRoutingProvider(),
             town_gazetteer=TownGazetteer(data_path="/tmp/missing-roadtripper-towns.json"),
+            start_background_jobs=False,
         )
         trip = service.create_trip("Plot Test", settings_payload={"trip_mode": "plot_trip", "live_providers": False})
         route = service.create_plotted_route(
@@ -65,6 +66,7 @@ class Phase7PlotTripTests(unittest.TestCase):
             storage=Storage(":memory:"),
             routing_provider=FakeRoutingProvider(),
             town_gazetteer=TownGazetteer(data_path="/tmp/missing-roadtripper-towns.json"),
+            start_background_jobs=False,
         )
         first = service.create_trip("First")
         second = service.create_trip("Second")
@@ -79,6 +81,30 @@ class Phase7PlotTripTests(unittest.TestCase):
         )
         with self.assertRaises(KeyError):
             service.get_plotted_route(second["id"], route["id"])
+
+    def test_route_research_marks_towns_done_and_stores_research(self):
+        service = StoryGuideService(
+            storage=Storage(":memory:"),
+            routing_provider=FakeRoutingProvider(),
+            town_gazetteer=TownGazetteer(data_path="/tmp/missing-roadtripper-towns.json"),
+            start_background_jobs=False,
+        )
+        trip = service.create_trip("Research Test", settings_payload={"live_providers": False})
+        route = service.create_plotted_route(
+            trip["id"],
+            {
+                "waypoints": [
+                    {"latitude": 30.2672, "longitude": -97.7431},
+                    {"latitude": 31.5493, "longitude": -97.1467},
+                ]
+            },
+        )
+        researched = service.run_plotted_route_research(route["id"])
+        self.assertEqual(researched["status"], "done")
+        self.assertTrue(researched["towns"])
+        self.assertTrue(all(town["status"] == "done" for town in researched["towns"]))
+        self.assertTrue(all(town["research"].get("narration") for town in researched["towns"]))
+        self.assertTrue(service.history(query="Austin", trip_id=trip["id"]))
 
 
 if __name__ == "__main__":
