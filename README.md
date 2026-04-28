@@ -248,6 +248,55 @@ Town selection is handled by `storyguide.plotting.TownGazetteer`. If `storyguide
 ROADTRIPPER_TOWN_DATA=/path/to/us_towns.json
 ```
 
+The expected gazetteer JSON shape is:
+
+```json
+{
+  "towns": [
+    {
+      "name": "Waco",
+      "region": "Texas",
+      "country": "USA",
+      "latitude": 31.5493,
+      "longitude": -97.1467,
+      "population": 144816,
+      "source": "census"
+    }
+  ]
+}
+```
+
+Additional fields such as `geoid` and `region_abbr` are allowed. The app uses this file only to discover candidate towns along the route. After that, it still gathers additional town details, nearby points of interest, narration text, and optional LLM output through the normal enrichment pipeline.
+
+You can build the file from a direct city CSV/TSV/JSON source:
+
+```bash
+python3 scripts/build_town_gazetteer.py \
+  --input /path/to/us-cities.csv \
+  --output storyguide/data/us_towns.json \
+  --min-population 200 \
+  --source simplemaps
+```
+
+The direct importer accepts common column names such as `city`, `name`, `state`, `state_name`, `lat`, `latitude`, `lon`, `lng`, `longitude`, `population`, and `pop`.
+
+You can also join a Census-style places gazetteer with a population table:
+
+```bash
+python3 scripts/build_town_gazetteer.py \
+  --places-gazetteer /path/to/places.tsv \
+  --population /path/to/population.csv \
+  --output storyguide/data/us_towns.json \
+  --min-population 200 \
+  --source census
+```
+
+For aggregation, the most reliable approach is to use an official or licensed city baseline for name/state/coordinates/population, then let RoadTripper enrich only the selected route towns:
+- U.S. Census Gazetteer plus Census/ACS population table joined by GEOID: most official, but requires joining two files because Gazetteer coordinate files do not include population.
+- SimpleMaps US Cities: easiest practical CSV if its license fits your use.
+- GeoNames: broad and free, but requires more cleanup and validation.
+- OpenStreetMap/Overpass: useful for additional place coverage, but population tags are inconsistent, so it is weaker as the population authority.
+
 ## Optional LLM Narration
 RoadTripper now has pluggable LLM provider abstractions. If no provider is configured, the app uses the built-in deterministic narration. If you configure a provider, the app will try to improve the text for:
 - current-place narration
