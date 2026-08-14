@@ -1,11 +1,11 @@
-const CACHE_NAME = "roadtripper-shell-20260814";
+const CACHE_NAME = "roadtripper-shell-20260814.2";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./icon.svg",
   "./manifest.webmanifest",
-  "./js/app.js?v=20260814",
+  "./js/app.js?v=20260814.2",
   "./js/core.js?v=20260814",
   "./js/services.js?v=20260814",
   "./js/store.js?v=20260814",
