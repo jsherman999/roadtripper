@@ -1,11 +1,11 @@
-const CACHE_NAME = "roadtripper-shell-20260814.2";
+const CACHE_NAME = "roadtripper-shell-20260814.3";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./icon.svg",
   "./manifest.webmanifest",
-  "./js/app.js?v=20260814.2",
+  "./js/app.js?v=20260814.3",
   "./js/core.js?v=20260814",
   "./js/services.js?v=20260814",
   "./js/store.js?v=20260814",
@@ -26,7 +26,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-cache" })
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
