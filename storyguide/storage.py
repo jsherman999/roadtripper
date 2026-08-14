@@ -1,12 +1,12 @@
 import json
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 
 def utcnow() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 class Storage:
@@ -19,6 +19,32 @@ class Storage:
             self.connection.execute("PRAGMA busy_timeout = 30000")
             self.connection.execute("PRAGMA journal_mode = WAL")
         self._init_schema()
+
+    def close(self):
+        """Close SQLite deterministically; safe to call more than once."""
+        lock = getattr(self, "lock", None)
+        if lock is None:
+            return
+        with lock:
+            connection = getattr(self, "connection", None)
+            if connection is None:
+                return
+            self.connection = None
+            connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            # Destructors run during interpreter teardown, when modules and
+            # locks may already be unavailable.
+            pass
 
     def _init_schema(self):
         with self.lock:

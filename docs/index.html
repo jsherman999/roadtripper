@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#08111f">
+    <meta name="description" content="Browser-only road trip narration, route planning, and local trip history.">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://upload.wikimedia.org; connect-src 'self' https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://en.wikipedia.org https://overpass-api.de https://router.project-osrm.org https://*.tile.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <title>RoadTripper — stories for the road</title>
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQ3yn8R2OrES9jQf+lxy52K6MZ7bTQ="
+      crossorigin="anonymous"
+    >
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to trip controls</a>
+    <header class="app-header">
+      <a class="brand" href="./" aria-label="RoadTripper home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48" role="img"><path d="M9 35c7-1 8-8 15-8s8 7 15 8M13 19l4-7 5 5 5-9 8 11M24 27v13"/></svg>
+        </span>
+        <span>
+          <strong>RoadTripper</strong>
+          <small>stories for the road</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <span id="connection-status" class="connection-pill"><span></span> Online</span>
+        <button id="open-history" class="icon-text-button" type="button">
+          <span aria-hidden="true">↺</span> Trips
+        </button>
+        <button id="open-settings" class="icon-button" type="button" aria-label="Open settings">⚙</button>
+        <button id="open-about" class="icon-button" type="button" aria-label="About RoadTripper">?</button>
+      </div>
+    </header>
+
+    <main id="main-content" class="app-main">
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">No install. No account. Just go.</p>
+          <h1 id="page-title">Turn the road ahead into a story.</h1>
+        </div>
+        <p>Your location is processed in this browser. Stories and trips stay on this device unless you export them.</p>
+      </section>
+
+      <section class="trip-workspace" aria-label="Trip workspace">
+        <aside class="control-panel">
+          <div class="mode-switch" role="group" aria-label="Trip mode">
+            <button class="mode-button is-active" data-mode="drive" type="button"><span>◉</span> Drive</button>
+            <button class="mode-button" data-mode="explore" type="button"><span>⌖</span> Explore</button>
+            <button class="mode-button" data-mode="route" type="button"><span>⌁</span> Route</button>
+          </div>
+
+          <label class="field-label" for="trip-name">Trip name</label>
+          <input id="trip-name" class="text-input" value="The Great Open Road" autocomplete="off" maxlength="80">
+
+          <div class="trip-actions">
+            <button id="start-trip" class="primary-button" type="button"><span aria-hidden="true">▶</span> Start trip</button>
+            <button id="stop-trip" class="secondary-button" type="button" disabled>Stop</button>
+          </div>
+
+          <p id="mode-hint" class="mode-hint">Start the trip and allow location access. RoadTripper will speak when a new place comes into view.</p>
+
+          <div class="status-strip" aria-label="Trip status">
+            <div><span>Status</span><strong id="trip-status">Ready</strong></div>
+            <div><span>GPS</span><strong id="gps-status">Waiting</strong></div>
+            <div><span>Voice</span><strong id="voice-status">Ready</strong></div>
+          </div>
+
+          <article id="current-place-card" class="current-place-card is-empty">
+            <p class="card-label">Current place</p>
+            <h2 id="current-place-name">Ready when you are</h2>
+            <p id="current-place-region">Start a drive or click the map to explore.</p>
+            <p id="current-place-summary" class="place-summary"></p>
+            <a id="current-place-source" class="source-link is-hidden" target="_blank" rel="noopener noreferrer">Read the source ↗</a>
+          </article>
+
+          <p id="decision-reason" class="decision-line" aria-live="polite">No narration yet.</p>
+
+          <section id="route-builder" class="route-builder is-hidden" aria-labelledby="route-builder-title">
+            <div class="section-heading compact">
+              <div>
+                <p class="card-label">Route planner</p>
+                <h2 id="route-builder-title">Your waypoints</h2>
+              </div>
+              <button id="clear-route" class="text-button" type="button">Clear</button>
+            </div>
+            <ol id="waypoint-list" class="waypoint-list">
+              <li class="empty-row">Click the map to add at least two stops.</li>
+            </ol>
+            <button id="plot-route" class="primary-button full-width" type="button" disabled>Build road trip</button>
+            <p id="route-status" class="mode-hint">Stops stay in the order you choose them.</p>
+          </section>
+        </aside>
+
+        <div class="map-panel">
+          <div id="trip-map" class="trip-map" aria-label="Interactive RoadTripper map"></div>
+          <div class="map-topbar">
+            <span class="map-tip" id="map-tip">Drag to explore · click a place for a story</span>
+            <button id="locate-me" class="map-control" type="button" aria-label="Center map on my location">⌖</button>
+          </div>
+          <div id="map-loading" class="map-loading is-hidden" role="status">
+            <span class="spinner" aria-hidden="true"></span>
+            <span id="loading-message">Looking up the road ahead…</span>
+          </div>
+          <div class="map-legend" aria-label="Map legend">
+            <span><i class="legend-dot current"></i>You</span>
+            <span><i class="legend-dot place"></i>Places</span>
+            <span><i class="legend-dot route"></i>Route</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <article class="content-panel story-panel">
+          <div class="section-heading">
+            <div>
+              <p class="card-label">Live narration</p>
+              <h2>Stories from the road</h2>
+            </div>
+            <span id="story-count" class="count-badge">0 stories</span>
+          </div>
+          <div id="story-feed" class="story-feed">
+            <div class="empty-state">
+              <span aria-hidden="true">◌</span>
+              <h3>The road is quiet—for now.</h3>
+              <p>Your narrated places will collect here as the trip unfolds.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="content-panel nearby-panel">
+          <div class="section-heading">
+            <div>
+              <p class="card-label">Worth a look</p>
+              <h2 id="nearby-title">Nearby places</h2>
+            </div>
+          </div>
+          <div id="nearby-list" class="nearby-list">
+            <p class="empty-row">Landmarks and local highlights will appear here.</p>
+          </div>
+        </article>
+      </section>
+
+      <section id="itinerary-panel" class="content-panel itinerary-panel is-hidden" aria-labelledby="itinerary-title">
+        <div class="section-heading">
+          <div>
+            <p class="card-label">Plotted trip</p>
+            <h2 id="itinerary-title">Road-ahead itinerary</h2>
+          </div>
+          <strong id="route-summary" class="route-summary"></strong>
+        </div>
+        <div id="itinerary-list" class="itinerary-list"></div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>Place data from OpenStreetMap contributors, Wikipedia, and public geocoding services. Routing by OSRM.</p>
+      <p>Browser-only edition · <a href="https://github.com/jsherman999/roadtripper" target="_blank" rel="noopener noreferrer">View source</a></p>
+    </footer>
+
+    <dialog id="settings-dialog" class="app-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div><p class="card-label">Preferences</p><h2>Make it your trip</h2></div>
+          <button class="dialog-close icon-button" value="cancel" aria-label="Close settings">×</button>
+        </div>
+        <div class="settings-grid">
+          <label>Narration style
+            <select id="narration-mode">
+              <option value="storyteller">Storyteller</option>
+              <option value="quick">Quick facts</option>
+              <option value="history">History</option>
+            </select>
+          </label>
+          <label>Audience
+            <select id="age-band">
+              <option value="adult">Adults &amp; teens</option>
+              <option value="elementary">Elementary</option>
+              <option value="early_elementary">Early elementary</option>
+            </select>
+          </label>
+          <label class="wide">Browser voice
+            <select id="voice-select"><option value="">Automatic</option></select>
+          </label>
+          <label>Minimum minutes between stories
+            <input id="minimum-minutes" type="number" min="1" max="30" value="4">
+          </label>
+          <label>Minimum distance (km)
+            <input id="minimum-distance" type="number" min="1" max="100" value="5">
+          </label>
+        </div>
+        <label class="toggle-row"><span><strong>Speak stories aloud</strong><small>Uses your browser's built-in voices.</small></span><input id="speak-aloud" type="checkbox" checked></label>
+        <label class="toggle-row"><span><strong>Save trip history</strong><small>Stores up to 250 stories per trip on this device.</small></span><input id="save-history" type="checkbox" checked></label>
+        <div class="dialog-actions"><button id="save-settings" class="primary-button" value="default">Save preferences</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="history-dialog" class="app-dialog wide-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div><p class="card-label">Saved locally</p><h2>Your trip archive</h2></div>
+          <button class="dialog-close icon-button" value="cancel" aria-label="Close trip archive">×</button>
+        </div>
+        <div class="history-tools">
+          <input id="history-search" class="text-input" type="search" placeholder="Search places and stories">
+          <button id="export-trip" class="secondary-button" type="button">Export current trip</button>
+          <button id="clear-history" class="danger-button" type="button">Clear stories</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </form>
+    </dialog>
+
+    <dialog id="about-dialog" class="app-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div><p class="card-label">About</p><h2>RoadTripper, untethered</h2></div>
+          <button class="dialog-close icon-button" value="cancel" aria-label="Close about RoadTripper">×</button>
+        </div>
+        <div class="about-copy">
+          <p>This edition runs entirely in your browser—there is no RoadTripper server and no account. Live map, geocoder, Wikipedia, OpenStreetMap, and routing requests go directly to their public providers.</p>
+          <h3>Three ways to travel</h3>
+          <p><strong>Drive</strong> follows your live location. <strong>Explore</strong> turns any map click into a narrated stop. <strong>Route</strong> connects selected waypoints and researches towns along the road.</p>
+          <h3>Privacy</h3>
+          <p>Trip history is stored in this browser's local storage. Clear it any time from Trips. Public providers receive coordinates only when needed to answer a place or route request.</p>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <noscript><p class="noscript">RoadTripper needs JavaScript to use maps, location, and speech.</p></noscript>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin="anonymous"
+    ></script>
+    <script type="module" src="./js/app.js?v=20260814"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "RoadTripper — Stories for the Road",
+  "short_name": "RoadTripper",
+  "description": "Browser-only road trip narration and route planning.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08111f",
+  "theme_color": "#08111f",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

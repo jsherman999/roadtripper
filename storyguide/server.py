@@ -18,6 +18,12 @@ class StoryGuideHTTPServer(ThreadingHTTPServer):
         super().__init__(server_address, RequestHandlerClass)
         self.service = service
 
+    def server_close(self):
+        try:
+            self.service.storage.close()
+        finally:
+            super().server_close()
+
 
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "RoadTripStoryguide/1.0"
