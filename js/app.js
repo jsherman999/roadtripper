@@ -331,13 +331,23 @@ async function investigate(coordinates, { manual = false, suppliedPlace = null, 
   try {
     const placePromise = suppliedPlace ? Promise.resolve(suppliedPlace) : api.reverseGeocode(coordinates.latitude, coordinates.longitude);
     const nearbyPromise = api.nearbyPlaces(coordinates.latitude, coordinates.longitude).catch(() => []);
-    const [place, nearby] = await Promise.all([placePromise, nearbyPromise]);
+    const place = await placePromise;
+    const nearby = await Promise.race([
+      nearbyPromise,
+      new Promise((resolve) => window.setTimeout(() => resolve(null), 2800)),
+    ]);
     if (generation !== state.lookupGeneration) return;
     place.latitude = Number(place.latitude ?? coordinates.latitude);
     place.longitude = Number(place.longitude ?? coordinates.longitude);
-    const combinedNearby = mergeNearby(nearby, place.nearbyHints || [], coordinates);
+    const combinedNearby = mergeNearby(nearby || [], place.nearbyHints || [], coordinates);
     renderCurrentPlace(place, null);
     renderNearby(combinedNearby);
+    if (nearby === null) {
+      nearbyPromise.then((lateNearby) => {
+        if (generation !== state.lookupGeneration) return;
+        renderNearby(mergeNearby(lateNearby, place.nearbyHints || [], coordinates));
+      });
+    }
     if (manual) {
       state.layers.selected.clearLayers();
       L.marker([place.latitude, place.longitude], { icon: pinIcon("place") })
