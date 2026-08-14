@@ -860,7 +860,7 @@ function init() {
   updateRunningUi();
   renderStories();
   setMode("drive");
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260814.3").catch(() => {});
 }
 
 try {
