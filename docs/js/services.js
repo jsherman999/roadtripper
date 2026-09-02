@@ -1,4 +1,4 @@
-import { haversineKm, sampleCoordinates, sortTownsAlongRoute } from "./core.js?v=20260901";
+import { haversineKm, sampleCoordinates, sortTownsAlongRoute } from "./core.js?v=20260901.2";
 
 const DEFAULT_TIMEOUT_MS = 16000;
 

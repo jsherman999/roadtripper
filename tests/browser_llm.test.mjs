@@ -153,3 +153,55 @@ test("NarrationClient narrates through chat completions and cleans the reply", a
   assert.equal(arrayStory, "Array reply.");
   assert.equal(sent.body.max_tokens, 400);
 });
+
+test("speech voices follow the model and instructions follow the audience", async () => {
+  const { TTS_MODELS, TTS_VOICES, voicesForModel, speechInstructions } = await import("../docs/js/llm.js");
+  assert.equal(TTS_MODELS[0].id, "gpt-4o-mini-tts");
+  assert.ok(TTS_VOICES.some((voice) => voice.id === "sage"));
+  assert.ok(voicesForModel("gpt-4o-mini-tts").some((voice) => voice.id === "marin"));
+  assert.ok(!voicesForModel("tts-1").some((voice) => voice.id === "marin"));
+  assert.ok(voicesForModel("tts-1").some((voice) => voice.id === "sage"));
+  assert.match(speechInstructions("early_elementary", "storyteller"), /young children/);
+  assert.match(speechInstructions("adult", "quick"), /brisk/);
+});
+
+test("SpeechClient posts to the speech endpoint, steers only steerable models, and returns audio", async () => {
+  const { SpeechClient } = await import("../docs/js/llm.js");
+  const sent = [];
+  const fetchImpl = async (url, options) => {
+    sent.push({ url: String(url), body: JSON.parse(options.body), headers: options.headers });
+    return { ok: true, status: 200, blob: async () => new Blob(["audio-bytes"], { type: "audio/mpeg" }) };
+  };
+  const client = new SpeechClient(fetchImpl);
+  const blob = await client.synthesize({ key: "sk-test", model: "gpt-4o-mini-tts", voice: "sage", text: "  We are near   Waco.  ", instructions: "warm" });
+  assert.equal(blob.type, "audio/mpeg");
+  assert.equal(sent[0].url, PROVIDERS.openai.speechUrl);
+  assert.equal(sent[0].headers.Authorization, "Bearer sk-test");
+  assert.deepEqual(sent[0].body, { model: "gpt-4o-mini-tts", voice: "sage", input: "We are near Waco.", response_format: "mp3", instructions: "warm" });
+
+  await client.synthesize({ key: "sk-test", model: "tts-1", voice: "nova", text: "Hello", instructions: "warm" });
+  assert.equal(sent[1].body.instructions, undefined);
+
+  await assert.rejects(client.synthesize({ key: "", model: "tts-1", voice: "nova", text: "Hello" }), /OpenAI API key/);
+  const rejecting = new SpeechClient(async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "bad" } }) }));
+  await assert.rejects(rejecting.synthesize({ key: "sk-bad", text: "Hello" }), /OpenAI rejected the API key/);
+});
+
+test("network failures are tagged and verifyKey explains them through the models endpoint", async () => {
+  const failing = new NarrationClient(async () => { throw new TypeError("Failed to fetch"); });
+  await assert.rejects(failing.narrate({ providerId: "openai", key: "sk-x", model: "gpt-5-mini", fallbackScript: "f" }), (error) => error.code === "network");
+
+  const verifier = new NarrationClient(async (url) => (
+    String(url) === PROVIDERS.openai.modelsUrl
+      ? { ok: false, status: 401, json: async () => ({ error: { message: "bad" } }) }
+      : { ok: true, status: 200, json: async () => ({}) }
+  ));
+  const verdict = await verifier.verifyKey("openai", "sk-bad");
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.status, 401);
+  assert.match(verdict.message, /rejected the API key/);
+
+  const accepting = new NarrationClient(async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }));
+  assert.equal((await accepting.verifyKey("openai", "sk-good")).ok, true);
+  assert.equal((await accepting.verifyKey("nope", "sk-good")).ok, false);
+});

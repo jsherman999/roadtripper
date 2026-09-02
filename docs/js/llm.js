@@ -6,6 +6,8 @@
 
 const MODELS_TIMEOUT_MS = 20000;
 const NARRATION_TIMEOUT_MS = 45000;
+const SPEECH_TIMEOUT_MS = 30000;
+const TTS_INPUT_LIMIT = 4096;
 const KEY_PREFIX = "roadtripper-browser-llm-key-v1:";
 
 export const PROVIDERS = {
@@ -22,10 +24,51 @@ export const PROVIDERS = {
     name: "OpenAI",
     modelsUrl: "https://api.openai.com/v1/models",
     chatUrl: "https://api.openai.com/v1/chat/completions",
+    speechUrl: "https://api.openai.com/v1/audio/speech",
     keysUrl: "https://platform.openai.com/api-keys",
     keyHint: "OpenAI keys start with sk- and need access to chat models.",
   },
 };
+
+export const TTS_MODELS = [
+  { id: "gpt-4o-mini-tts", name: "GPT-4o mini TTS · most natural, follows tone instructions" },
+  { id: "tts-1-hd", name: "TTS-1 HD · high quality" },
+  { id: "tts-1", name: "TTS-1 · fastest" },
+];
+
+const ALL_TTS_MODELS = "all";
+const STEERABLE_ONLY = "steerable";
+
+export const TTS_VOICES = [
+  { id: "alloy", name: "Alloy", note: "balanced and neutral", models: ALL_TTS_MODELS },
+  { id: "ash", name: "Ash", note: "confident and clear", models: ALL_TTS_MODELS },
+  { id: "ballad", name: "Ballad", note: "expressive and melodic", models: STEERABLE_ONLY },
+  { id: "cedar", name: "Cedar", note: "natural and grounded", models: STEERABLE_ONLY },
+  { id: "coral", name: "Coral", note: "warm and friendly", models: ALL_TTS_MODELS },
+  { id: "echo", name: "Echo", note: "calm and steady", models: ALL_TTS_MODELS },
+  { id: "fable", name: "Fable", note: "storyteller with a British lilt", models: ALL_TTS_MODELS },
+  { id: "marin", name: "Marin", note: "natural and conversational", models: STEERABLE_ONLY },
+  { id: "nova", name: "Nova", note: "bright and upbeat", models: ALL_TTS_MODELS },
+  { id: "onyx", name: "Onyx", note: "deep and authoritative", models: ALL_TTS_MODELS },
+  { id: "sage", name: "Sage", note: "soft and even", models: ALL_TTS_MODELS },
+  { id: "shimmer", name: "Shimmer", note: "light and cheerful", models: ALL_TTS_MODELS },
+  { id: "verse", name: "Verse", note: "versatile and natural", models: STEERABLE_ONLY },
+];
+
+export function isSteerableSpeechModel(modelId) {
+  return String(modelId || "").startsWith("gpt-");
+}
+
+export function voicesForModel(modelId) {
+  const steerable = isSteerableSpeechModel(modelId);
+  return TTS_VOICES.filter((voice) => voice.models === ALL_TTS_MODELS || steerable);
+}
+
+export function speechInstructions(ageBand = "adult", mode = "storyteller") {
+  const audience = ageBand === "early_elementary" ? "young children" : ageBand === "elementary" ? "kids" : "adults and teens";
+  const pace = mode === "quick" ? "brisk but clear" : "unhurried and natural";
+  return `You are a warm road trip narrator reading aloud to ${audience} in a moving car. Use a ${pace} pace with light enthusiasm, pronounce place names clearly, and avoid theatrical exaggeration.`;
+}
 
 function safeStorage(candidate) {
   try {
@@ -223,11 +266,11 @@ export class NarrationClient {
     this.fetch = typeof fetchImpl === "function" ? fetchImpl.bind(globalThis) : null;
   }
 
-  async request(url, { provider, method = "GET", key = "", body = null, timeoutMs = MODELS_TIMEOUT_MS }) {
+  async request(url, { provider, method = "GET", key = "", body = null, timeoutMs = MODELS_TIMEOUT_MS, responseType = "json" }) {
     if (!this.fetch) throw new Error("This browser cannot reach the network");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const headers = { Accept: "application/json" };
+    const headers = { Accept: responseType === "blob" ? "audio/mpeg, application/json" : "application/json" };
     if (key) headers.Authorization = `Bearer ${key}`;
     if (body) headers["Content-Type"] = "application/json";
     try {
@@ -237,15 +280,39 @@ export class NarrationClient {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
-      const payload = await readJson(response);
-      if (!response.ok) throw new Error(describeFailure(provider, response.status, payload));
-      return payload;
+      if (!response.ok) {
+        const failure = new Error(describeFailure(provider, response.status, await readJson(response)));
+        failure.status = response.status;
+        throw failure;
+      }
+      return responseType === "blob" ? response.blob() : readJson(response);
     } catch (error) {
       if (error?.name === "AbortError") throw new Error(`${provider.name} took too long to respond.`);
-      if (error instanceof TypeError) throw new Error(`Could not reach ${provider.name}. Check your connection.`);
+      if (error instanceof TypeError) {
+        const failure = new Error(`Could not reach ${provider.name}. Check your connection.`);
+        failure.code = "network";
+        throw failure;
+      }
       throw error;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Some providers answer a bad key on POST endpoints from an edge layer that
+   * omits CORS headers, so the browser only sees a network failure. The model
+   * list endpoint does answer with readable errors, so use it to explain why
+   * a request failed.
+   */
+  async verifyKey(providerId, key) {
+    const provider = PROVIDERS[providerId];
+    if (!provider) return { ok: false, message: "Choose an AI provider first." };
+    try {
+      await this.request(provider.modelsUrl, { provider, key });
+      return { ok: true, message: `${provider.name} accepted the API key.` };
+    } catch (error) {
+      return { ok: false, message: error.message, status: error.status, code: error.code };
     }
   }
 
@@ -276,5 +343,24 @@ export class NarrationClient {
     const text = cleanNarration(messageText(payload?.choices?.[0]?.message?.content));
     if (!text) throw new Error(`${provider.name} returned an empty story.`);
     return text;
+  }
+}
+
+export class SpeechClient extends NarrationClient {
+  async synthesize({ key, model = "gpt-4o-mini-tts", voice = "sage", text, instructions = "" }) {
+    const provider = PROVIDERS.openai;
+    if (!key) throw new Error("Add your OpenAI API key in Settings.");
+    const input = String(text || "").replace(/\s+/g, " ").trim().slice(0, TTS_INPUT_LIMIT);
+    if (!input) throw new Error("There is nothing to read aloud.");
+    const body = { model, voice, input, response_format: "mp3" };
+    if (instructions && isSteerableSpeechModel(model)) body.instructions = instructions;
+    return this.request(provider.speechUrl, {
+      provider,
+      method: "POST",
+      key,
+      body,
+      timeoutMs: SPEECH_TIMEOUT_MS,
+      responseType: "blob",
+    });
   }
 }

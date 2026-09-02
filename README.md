@@ -10,7 +10,7 @@ The hosted edition runs without Python, an application server, or an account. An
 - Static source: [`docs/`](docs/)
 - Local preview: `python3 -m http.server 4173 -d docs`
 
-It supports live geolocation, click-to-explore narration, multi-stop driving routes, route-town research, browser speech synthesis, local trip history, search, and Markdown export. Public place, map, encyclopedia, and route requests are made directly from the browser; saved trips stay in browser storage. Add your own OpenRouter or OpenAI key in Settings to have a language model write the stories. The original Python server and native iOS client remain available as separate clients.
+It supports live geolocation, click-to-explore narration, multi-stop driving routes, route-town research, browser speech synthesis, local trip history, search, and Markdown export. Public place, map, encyclopedia, and route requests are made directly from the browser; saved trips stay in browser storage. Add your own OpenRouter or OpenAI key in Settings to have a language model write the stories, and an OpenAI key to have them read in a natural voice. The original Python server and native iOS client remain available as separate clients.
 
 ### Optional AI narration in the browser
 
@@ -27,6 +27,10 @@ How keys are handled:
 - Clear the key field and save to forget a stored key.
 - Keys are only ever sent to the provider you chose. The page's Content-Security-Policy in [`docs/index.html`](docs/index.html) blocks every other destination, so add a host there if you add a provider in [`docs/js/llm.js`](docs/js/llm.js).
 - If a model call fails, the built-in narration is used for that story and a notice is shown.
+
+### Optional AI voice in the browser
+
+Under **Settings → AI voice**, choose `OpenAI text-to-speech`, paste an OpenAI key (the section reuses the AI narration key when that provider is OpenAI), pick a voice model and a voice, and click **Play a sample** to hear it before saving. Stories are then read through OpenAI's speech endpoint, with the browser voice as the fallback if a request fails. Generated audio is cached in memory for the session, so replaying a story does not cost another request. Keys follow the same session-or-remember rule as narration keys.
 
 ### Publishing to GitHub Pages
 
