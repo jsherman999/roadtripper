@@ -7,9 +7,10 @@ import {
   haversineKm,
   makeId,
   shouldNarrate,
-} from "./core.js?v=20260814";
-import { PublicDataClient } from "./services.js?v=20260814";
-import { TripStore } from "./store.js?v=20260814";
+} from "./core.js?v=20260901";
+import { PublicDataClient } from "./services.js?v=20260901";
+import { TripStore } from "./store.js?v=20260901";
+import { KeyVault, NarrationClient, PROVIDERS, groupModels } from "./llm.js?v=20260901";
 
 const PREFERENCES_KEY = "roadtripper-browser-preferences-v1";
 const DEFAULT_CENTER = [39.5, -98.35];
@@ -34,6 +35,8 @@ const MODE_COPY = {
 const byId = (id) => document.getElementById(id);
 const api = new PublicDataClient();
 const store = new TripStore();
+const llm = new NarrationClient();
+const vault = new KeyVault();
 const state = {
   mode: "drive",
   running: false,
@@ -54,6 +57,9 @@ const state = {
   waypoints: [],
   route: null,
   loadingCount: 0,
+  llmModels: [],
+  llmLoading: false,
+  llmErrorAt: 0,
   preferences: readPreferences(),
 };
 
@@ -66,6 +72,9 @@ function readPreferences() {
     minimumDistance: 5,
     speakAloud: true,
     saveHistory: true,
+    llmProvider: "",
+    llmModel: "",
+    rememberKey: false,
   };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(PREFERENCES_KEY) || "{}") };
@@ -75,6 +84,7 @@ function readPreferences() {
 }
 
 function savePreferences() {
+  const providerId = PROVIDERS[byId("llm-provider").value] ? byId("llm-provider").value : "";
   state.preferences = {
     narrationMode: byId("narration-mode").value,
     ageBand: byId("age-band").value,
@@ -83,9 +93,25 @@ function savePreferences() {
     minimumDistance: Number(byId("minimum-distance").value) || 5,
     speakAloud: byId("speak-aloud").checked,
     saveHistory: byId("save-history").checked,
+    llmProvider: providerId,
+    llmModel: providerId ? byId("llm-model").value : "",
+    rememberKey: byId("llm-remember-key").checked,
   };
   localStorage.setItem(PREFERENCES_KEY, JSON.stringify(state.preferences));
-  toast("Preferences saved.");
+  if (providerId) vault.write(providerId, byId("llm-api-key").value, { remember: state.preferences.rememberKey });
+  const config = llmConfig();
+  if (config) {
+    setLlmStatus(`AI narration is on. Stories will be written by ${config.model} via ${PROVIDERS[providerId].name}.`, "ok");
+    toast(`Preferences saved. Stories will be written by ${config.model}.`);
+  } else if (providerId && !byId("llm-api-key").value.trim()) {
+    setLlmStatus(`Add your ${PROVIDERS[providerId].name} API key to turn on AI narration.`, "error");
+    toast("Preferences saved. Add an API key to turn on AI narration.");
+  } else if (providerId) {
+    setLlmStatus("Choose a model to turn on AI narration.", "error");
+    toast("Preferences saved. Choose a model to turn on AI narration.");
+  } else {
+    toast("Preferences saved.");
+  }
 }
 
 function applyPreferences() {
@@ -95,6 +121,106 @@ function applyPreferences() {
   byId("minimum-distance").value = state.preferences.minimumDistance;
   byId("speak-aloud").checked = state.preferences.speakAloud;
   byId("save-history").checked = state.preferences.saveHistory;
+  byId("llm-provider").value = PROVIDERS[state.preferences.llmProvider] ? state.preferences.llmProvider : "";
+  byId("llm-remember-key").checked = Boolean(state.preferences.rememberKey);
+  syncLlmKeyField();
+}
+
+function llmConfig() {
+  const providerId = state.preferences.llmProvider;
+  if (!PROVIDERS[providerId]) return null;
+  const { key } = vault.read(providerId);
+  const model = state.preferences.llmModel;
+  return key && model ? { providerId, key, model } : null;
+}
+
+function setLlmStatus(message, tone = "") {
+  const status = byId("llm-status");
+  status.textContent = message;
+  status.classList.toggle("is-error", tone === "error");
+  status.classList.toggle("is-ok", tone === "ok");
+}
+
+function renderModelOptions(models, selectedId = "") {
+  const providerId = byId("llm-provider").value;
+  const select = byId("llm-model");
+  select.replaceChildren();
+  if (!models.length) {
+    select.append(new Option(providerId ? "Enter a key, then load models" : "Turn on a provider first", ""));
+  } else {
+    select.append(new Option("Choose a model", ""));
+    groupModels(providerId, models).forEach((group) => {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = group.label;
+      group.models.forEach((model) => optgroup.append(new Option(model.name, model.id)));
+      select.append(optgroup);
+    });
+  }
+  if (selectedId && !models.some((model) => model.id === selectedId)) select.append(new Option(`${selectedId} (saved)`, selectedId));
+  select.value = selectedId || "";
+}
+
+function syncLlmKeyField() {
+  const providerId = byId("llm-provider").value;
+  const provider = PROVIDERS[providerId];
+  const keyInput = byId("llm-api-key");
+  const stored = provider ? vault.read(providerId) : { key: "", remembered: false };
+  keyInput.value = stored.key;
+  keyInput.disabled = !provider;
+  byId("llm-load-models").disabled = !provider;
+  if (provider && stored.key) byId("llm-remember-key").checked = stored.remembered;
+  state.llmModels = [];
+  const selectedModel = providerId && providerId === state.preferences.llmProvider ? state.preferences.llmModel : "";
+  renderModelOptions([], selectedModel);
+  if (!provider) {
+    setLlmStatus("Built-in narration is on. Choose a provider to write stories with an AI model.");
+    return;
+  }
+  if (stored.key) {
+    setLlmStatus(`${provider.name} key ${stored.remembered ? "remembered on this device" : "kept for this tab"}. Loading models…`);
+    loadModels();
+  } else {
+    setLlmStatus(`${provider.keyHint} Paste it above, then press Enter or Load models.`);
+    keyInput.focus?.({ preventScroll: true });
+  }
+}
+
+async function loadModels() {
+  const providerId = byId("llm-provider").value;
+  const provider = PROVIDERS[providerId];
+  const key = byId("llm-api-key").value.trim();
+  if (!provider) {
+    setLlmStatus("Choose a provider first.", "error");
+    return;
+  }
+  if (!key) {
+    setLlmStatus(`Enter your ${provider.name} API key to load its models.`, "error");
+    byId("llm-api-key").focus();
+    return;
+  }
+  if (state.llmLoading) return;
+  state.llmLoading = true;
+  byId("llm-load-models").disabled = true;
+  setLlmStatus(`Loading ${provider.name} models…`);
+  try {
+    const models = await llm.listModels(providerId, key);
+    if (byId("llm-provider").value !== providerId) return;
+    state.llmModels = models;
+    const selected = providerId === state.preferences.llmProvider ? state.preferences.llmModel : "";
+    renderModelOptions(models, selected);
+    setLlmStatus(
+      selected && models.some((model) => model.id === selected)
+        ? `${models.length} ${provider.name} models loaded. ${selected} is selected.`
+        : `${models.length} ${provider.name} models loaded. Pick one, then save your preferences.`,
+      "ok",
+    );
+  } catch (error) {
+    state.llmModels = [];
+    setLlmStatus(error.message || `${provider.name} models could not be loaded.`, "error");
+  } finally {
+    state.llmLoading = false;
+    byId("llm-load-models").disabled = !PROVIDERS[byId("llm-provider").value];
+  }
 }
 
 function toast(message, isError = false) {
@@ -378,9 +504,13 @@ async function investigate(coordinates, { manual = false, suppliedPlace = null, 
       mode: state.preferences.narrationMode,
       ageBand: state.preferences.ageBand,
     });
+    const aiStory = await writeWithModel(narration, { place, summary: wiki?.extract || place.description, nearby: combinedNearby });
+    if (generation !== state.lookupGeneration) return;
+    byId("decision-reason").textContent = aiStory ? `${decision.reason} · written by ${aiStory.model}` : decision.reason;
     addStory({
       title: narration.title,
-      script: narration.script,
+      script: aiStory?.script || narration.script,
+      narrator: aiStory?.model || "",
       placeName: place.name,
       region: place.region,
       latitude: place.latitude,
@@ -392,6 +522,34 @@ async function investigate(coordinates, { manual = false, suppliedPlace = null, 
     state.lastNarrated = { place: { ...place }, timestamp: Date.now() };
   } finally {
     setLoading(false);
+  }
+}
+
+async function writeWithModel(narration, { place, summary, nearby }) {
+  const config = llmConfig();
+  if (!config) return null;
+  byId("loading-message").textContent = `Writing the story with ${config.model}…`;
+  byId("decision-reason").textContent = `Writing with ${config.model}…`;
+  try {
+    const script = await llm.narrate({
+      ...config,
+      fallbackScript: narration.script,
+      context: {
+        place: { name: place.name, region: place.region, country: place.country, population: place.population },
+        summary,
+        nearby: nearby.slice(0, 5).map((item) => ({ name: item.name, kind: item.kind || "" })),
+        mode: state.preferences.narrationMode,
+        ageBand: state.preferences.ageBand,
+      },
+    });
+    return { script, model: config.model };
+  } catch (error) {
+    console.error(error);
+    if (Date.now() - state.llmErrorAt > 30000) {
+      state.llmErrorAt = Date.now();
+      toast(`AI narration failed: ${error.message} Using the built-in story instead.`, true);
+    }
+    return null;
   }
 }
 
@@ -467,7 +625,7 @@ function renderStories() {
     script.textContent = event.script;
     const meta = document.createElement("div");
     meta.className = "story-meta";
-    meta.textContent = `${event.placeName}${event.region ? `, ${event.region}` : ""} · ${new Date(event.recordedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    meta.textContent = `${event.placeName}${event.region ? `, ${event.region}` : ""} · ${new Date(event.recordedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${event.narrator ? ` · ${event.narrator}` : ""}`;
     copy.append(heading, script, meta);
     const play = document.createElement("button");
     play.type = "button";
@@ -838,6 +996,16 @@ function wireEvents() {
     byId("history-dialog").showModal();
   });
   byId("save-settings").addEventListener("click", savePreferences);
+  byId("llm-provider").addEventListener("change", syncLlmKeyField);
+  byId("llm-load-models").addEventListener("click", loadModels);
+  byId("llm-api-key").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== "Return" && event.keyCode !== 13) return;
+    event.preventDefault();
+    loadModels();
+  });
+  byId("llm-api-key").addEventListener("change", () => {
+    if (byId("llm-api-key").value.trim()) loadModels();
+  });
   byId("history-search").addEventListener("input", renderHistory);
   byId("export-trip").addEventListener("click", exportCurrentTrip);
   byId("clear-history").addEventListener("click", clearHistory);
@@ -860,7 +1028,7 @@ function init() {
   updateRunningUi();
   renderStories();
   setMode("drive");
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260814.3").catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260901").catch(() => {});
 }
 
 try {

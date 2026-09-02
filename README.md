@@ -4,13 +4,41 @@ RoadTripper turns live device location into spoken road trip commentary for chil
 
 ## Browser-Only Edition
 
-The hosted edition runs without Python, an application server, API keys, or an account:
+The hosted edition runs without Python, an application server, or an account. An AI provider key is optional:
 
 - Live app: [https://jsherman999.github.io/roadtripper/](https://jsherman999.github.io/roadtripper/)
 - Static source: [`docs/`](docs/)
 - Local preview: `python3 -m http.server 4173 -d docs`
 
-It supports live geolocation, click-to-explore narration, multi-stop driving routes, route-town research, browser speech synthesis, local trip history, search, and Markdown export. Public place, map, encyclopedia, and route requests are made directly from the browser; saved trips stay in browser storage. The original Python server and native iOS client remain available as separate clients.
+It supports live geolocation, click-to-explore narration, multi-stop driving routes, route-town research, browser speech synthesis, local trip history, search, and Markdown export. Public place, map, encyclopedia, and route requests are made directly from the browser; saved trips stay in browser storage. Add your own OpenRouter or OpenAI key in Settings to have a language model write the stories. The original Python server and native iOS client remain available as separate clients.
+
+### Optional AI narration in the browser
+
+Open **Settings → AI narration** to have a language model rewrite each story from the same public facts:
+
+1. Choose a provider: `OpenRouter` (one key reaches models from many vendors) or `OpenAI`.
+2. Paste your API key, then press Enter or click **Load models**. Every model the provider offers your key appears in the **Model** dropdown. Free OpenRouter models and OpenAI chat models are grouped first.
+3. Pick a model and click **Save preferences**. The story feed and the decision line show which model wrote each story.
+
+How keys are handled:
+
+- By default the key is kept in this tab's session storage and is gone when the tab closes.
+- Turn on **Remember key on this device** to keep it in this browser's local storage on this computer. The model list then loads automatically when the app opens.
+- Clear the key field and save to forget a stored key.
+- Keys are only ever sent to the provider you chose. The page's Content-Security-Policy in [`docs/index.html`](docs/index.html) blocks every other destination, so add a host there if you add a provider in [`docs/js/llm.js`](docs/js/llm.js).
+- If a model call fails, the built-in narration is used for that story and a notice is shown.
+
+### Publishing to GitHub Pages
+
+GitHub Pages serves the `gh-pages` branch, which is a subtree split of `docs/`:
+
+```bash
+git subtree split --prefix docs -b pages-build
+git push origin pages-build:gh-pages
+git branch -D pages-build
+```
+
+Bump the `?v=` query strings in `docs/index.html` and `docs/js/*.js` and the `CACHE_NAME` in `docs/sw.js` when shipping changes so the service worker drops stale files.
 
 This project includes:
 - A Python HTTP server with no external Python dependencies
@@ -25,6 +53,7 @@ This project includes:
 
 ## Files
 - Browser-only app: [`docs/index.html`](docs/index.html)
+- Browser AI narration client: [`docs/js/llm.js`](docs/js/llm.js)
 - App entry point: [`main.py`](main.py)
 - Browser server: [`storyguide/server.py`](storyguide/server.py)
 - Local frontend UI: [`storyguide/static/index.html`](storyguide/static/index.html)

@@ -1,14 +1,15 @@
-const CACHE_NAME = "roadtripper-shell-20260814.3";
+const CACHE_NAME = "roadtripper-shell-20260901";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./icon.svg",
   "./manifest.webmanifest",
-  "./js/app.js?v=20260814.3",
-  "./js/core.js?v=20260814",
-  "./js/services.js?v=20260814",
-  "./js/store.js?v=20260814",
+  "./js/app.js?v=20260901",
+  "./js/core.js?v=20260901",
+  "./js/llm.js?v=20260901",
+  "./js/services.js?v=20260901",
+  "./js/store.js?v=20260901",
 ];
 
 self.addEventListener("install", (event) => {

@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#08111f">
     <meta name="description" content="Browser-only road trip narration, route planning, and local trip history.">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://upload.wikimedia.org; connect-src 'self' https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://en.wikipedia.org https://overpass-api.de https://router.project-osrm.org https://*.tile.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://upload.wikimedia.org; connect-src 'self' https://openrouter.ai https://api.openai.com https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://en.wikipedia.org https://overpass-api.de https://router.project-osrm.org https://*.tile.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <title>RoadTripper — stories for the road</title>
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="manifest" href="./manifest.webmanifest">
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIINfQ3yn8R2OrES9jQf+lxy52K6MZ7bTQ="
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin="anonymous"
     >
     <link rel="stylesheet" href="./styles.css">
@@ -197,6 +197,30 @@
         </div>
         <label class="toggle-row"><span><strong>Speak stories aloud</strong><small>Uses your browser's built-in voices.</small></span><input id="speak-aloud" type="checkbox" checked></label>
         <label class="toggle-row"><span><strong>Save trip history</strong><small>Stores up to 250 stories per trip on this device.</small></span><input id="save-history" type="checkbox" checked></label>
+        <fieldset class="ai-settings">
+          <legend>AI narration <small>optional</small></legend>
+          <p class="ai-intro">Bring your own key and a language model will write each story from the same public facts. Without a key, RoadTripper uses its built-in narration.</p>
+          <div class="settings-grid">
+            <label>Provider
+              <select id="llm-provider">
+                <option value="">Off · built-in narration</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="openai">OpenAI</option>
+              </select>
+            </label>
+            <label>Model
+              <select id="llm-model"><option value="">Turn on a provider first</option></select>
+            </label>
+            <label class="wide">API key
+              <div class="key-row">
+                <input id="llm-api-key" class="text-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your provider key" disabled>
+                <button id="llm-load-models" class="secondary-button" type="button" disabled>Load models</button>
+              </div>
+            </label>
+          </div>
+          <p id="llm-status" class="ai-status" aria-live="polite">Built-in narration is on. Choose a provider to write stories with an AI model.</p>
+          <label class="toggle-row"><span><strong>Remember key on this device</strong><small>Off: the key lasts only while this tab is open. On: it is saved in this browser on this computer, and models load automatically next time. Clear the field and save to forget it.</small></span><input id="llm-remember-key" type="checkbox"></label>
+        </fieldset>
         <div class="dialog-actions"><button id="save-settings" class="primary-button" value="default">Save preferences</button></div>
       </form>
     </dialog>
@@ -227,7 +251,7 @@
           <h3>Three ways to travel</h3>
           <p><strong>Drive</strong> follows your live location. <strong>Explore</strong> turns any map click into a narrated stop. <strong>Route</strong> connects selected waypoints and researches towns along the road.</p>
           <h3>Privacy</h3>
-          <p>Trip history is stored in this browser's local storage. Clear it any time from Trips. Public providers receive coordinates only when needed to answer a place or route request.</p>
+          <p>Trip history is stored in this browser's local storage. Clear it any time from Trips. Public providers receive coordinates only when needed to answer a place or route request. If you add an AI provider key, it stays in this browser and is sent only to that provider.</p>
         </div>
       </form>
     </dialog>
@@ -240,6 +264,6 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="./js/app.js?v=20260814.3"></script>
+    <script type="module" src="./js/app.js?v=20260901"></script>
   </body>
 </html>
