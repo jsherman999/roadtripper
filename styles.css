@@ -372,6 +372,9 @@ button:disabled { cursor: not-allowed; filter: none; opacity: 0.38; box-shadow: 
 .ai-status.is-error { color: #ffc2bf; }
 .ai-status.is-ok { color: var(--green); }
 .ai-settings .toggle-row { padding: 13px 0; }
+.ai-status-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.ai-status-row .ai-status { flex: 1; margin: 0; }
+.ai-status-row .secondary-button { flex-shrink: 0; min-height: 40px; padding: 0 14px; font-size: 0.78rem; }
 
 @media (max-width: 1050px) {
   .trip-workspace { grid-template-columns: 340px minmax(0, 1fr); }

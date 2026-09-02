@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#08111f">
     <meta name="description" content="Browser-only road trip narration, route planning, and local trip history.">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://upload.wikimedia.org; connect-src 'self' https://openrouter.ai https://api.openai.com https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://en.wikipedia.org https://overpass-api.de https://router.project-osrm.org https://*.tile.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://upload.wikimedia.org; media-src 'self' blob:; connect-src 'self' https://openrouter.ai https://api.openai.com https://api.bigdatacloud.net https://nominatim.openstreetmap.org https://en.wikipedia.org https://overpass-api.de https://router.project-osrm.org https://*.tile.openstreetmap.org; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <title>RoadTripper — stories for the road</title>
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="manifest" href="./manifest.webmanifest">
@@ -219,8 +219,33 @@
             </label>
           </div>
           <p id="llm-status" class="ai-status" aria-live="polite">Built-in narration is on. Choose a provider to write stories with an AI model.</p>
-          <label class="toggle-row"><span><strong>Remember key on this device</strong><small>Off: the key lasts only while this tab is open. On: it is saved in this browser on this computer, and models load automatically next time. Clear the field and save to forget it.</small></span><input id="llm-remember-key" type="checkbox"></label>
         </fieldset>
+        <fieldset class="ai-settings">
+          <legend>AI voice <small>optional</small></legend>
+          <p class="ai-intro">Have OpenAI text-to-speech read the stories in a natural voice. Without it, RoadTripper uses the browser voice chosen above.</p>
+          <div class="settings-grid">
+            <label>Voice provider
+              <select id="tts-provider">
+                <option value="">Off · browser voice</option>
+                <option value="openai">OpenAI text-to-speech</option>
+              </select>
+            </label>
+            <label>Voice model
+              <select id="tts-model" disabled></select>
+            </label>
+            <label class="wide" id="tts-key-label">OpenAI API key
+              <input id="tts-api-key" class="text-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your OpenAI key" disabled>
+            </label>
+            <label class="wide">Voice
+              <select id="tts-voice" disabled></select>
+            </label>
+          </div>
+          <div class="ai-status-row">
+            <p id="tts-status" class="ai-status" aria-live="polite">Browser voice is on. Choose OpenAI to hear a natural voice.</p>
+            <button id="tts-preview" class="secondary-button" type="button" disabled>Play a sample</button>
+          </div>
+        </fieldset>
+        <label class="toggle-row"><span><strong>Remember keys on this device</strong><small>Off: keys last only while this tab is open. On: they are saved in this browser on this computer, and models load automatically next time. Clear a key field and save to forget it.</small></span><input id="llm-remember-key" type="checkbox"></label>
         <div class="dialog-actions"><button id="save-settings" class="primary-button" value="default">Save preferences</button></div>
       </form>
     </dialog>
@@ -264,6 +289,6 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="./js/app.js?v=20260901"></script>
+    <script type="module" src="./js/app.js?v=20260901.2"></script>
   </body>
 </html>

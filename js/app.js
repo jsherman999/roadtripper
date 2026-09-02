@@ -7,10 +7,10 @@ import {
   haversineKm,
   makeId,
   shouldNarrate,
-} from "./core.js?v=20260901";
-import { PublicDataClient } from "./services.js?v=20260901";
-import { TripStore } from "./store.js?v=20260901";
-import { KeyVault, NarrationClient, PROVIDERS, groupModels } from "./llm.js?v=20260901";
+} from "./core.js?v=20260901.2";
+import { PublicDataClient } from "./services.js?v=20260901.2";
+import { TripStore } from "./store.js?v=20260901.2";
+import { KeyVault, NarrationClient, PROVIDERS, SpeechClient, TTS_MODELS, groupModels, speechInstructions, voicesForModel } from "./llm.js?v=20260901.2";
 
 const PREFERENCES_KEY = "roadtripper-browser-preferences-v1";
 const DEFAULT_CENTER = [39.5, -98.35];
@@ -36,6 +36,7 @@ const byId = (id) => document.getElementById(id);
 const api = new PublicDataClient();
 const store = new TripStore();
 const llm = new NarrationClient();
+const speech = new SpeechClient();
 const vault = new KeyVault();
 const state = {
   mode: "drive",
@@ -60,6 +61,10 @@ const state = {
   llmModels: [],
   llmLoading: false,
   llmErrorAt: 0,
+  currentAudio: null,
+  audioGeneration: 0,
+  ttsCache: new Map(),
+  ttsErrorAt: 0,
   preferences: readPreferences(),
 };
 
@@ -74,6 +79,9 @@ function readPreferences() {
     saveHistory: true,
     llmProvider: "",
     llmModel: "",
+    ttsProvider: "",
+    ttsModel: "gpt-4o-mini-tts",
+    ttsVoice: "sage",
     rememberKey: false,
   };
   try {
@@ -85,6 +93,8 @@ function readPreferences() {
 
 function savePreferences() {
   const providerId = PROVIDERS[byId("llm-provider").value] ? byId("llm-provider").value : "";
+  const ttsOn = byId("tts-provider").value === "openai";
+  const remember = byId("llm-remember-key").checked;
   state.preferences = {
     narrationMode: byId("narration-mode").value,
     ageBand: byId("age-band").value,
@@ -95,23 +105,36 @@ function savePreferences() {
     saveHistory: byId("save-history").checked,
     llmProvider: providerId,
     llmModel: providerId ? byId("llm-model").value : "",
-    rememberKey: byId("llm-remember-key").checked,
+    ttsProvider: ttsOn ? "openai" : "",
+    ttsModel: byId("tts-model").value || "gpt-4o-mini-tts",
+    ttsVoice: byId("tts-voice").value || "sage",
+    rememberKey: remember,
   };
   localStorage.setItem(PREFERENCES_KEY, JSON.stringify(state.preferences));
-  if (providerId) vault.write(providerId, byId("llm-api-key").value, { remember: state.preferences.rememberKey });
-  const config = llmConfig();
-  if (config) {
-    setLlmStatus(`AI narration is on. Stories will be written by ${config.model} via ${PROVIDERS[providerId].name}.`, "ok");
-    toast(`Preferences saved. Stories will be written by ${config.model}.`);
+  if (providerId) vault.write(providerId, byId("llm-api-key").value, { remember });
+  if (ttsOn && providerId !== "openai") vault.write("openai", byId("tts-api-key").value, { remember });
+
+  const narration = llmConfig();
+  const voice = ttsConfig();
+  const notes = [];
+  if (narration) {
+    setLlmStatus(`AI narration is on. Stories will be written by ${narration.model} via ${PROVIDERS[providerId].name}.`, "ok");
+    notes.push(`stories by ${narration.model}`);
   } else if (providerId && !byId("llm-api-key").value.trim()) {
     setLlmStatus(`Add your ${PROVIDERS[providerId].name} API key to turn on AI narration.`, "error");
-    toast("Preferences saved. Add an API key to turn on AI narration.");
+    notes.push("add an API key for AI narration");
   } else if (providerId) {
     setLlmStatus("Choose a model to turn on AI narration.", "error");
-    toast("Preferences saved. Choose a model to turn on AI narration.");
-  } else {
-    toast("Preferences saved.");
+    notes.push("choose a model for AI narration");
   }
+  if (voice) {
+    setTtsStatus(`AI voice is on. Stories will be read by ${voice.voice} on ${voice.model}.`, "ok");
+    notes.push(`read by ${voice.voice}`);
+  } else if (ttsOn) {
+    setTtsStatus("Add your OpenAI API key to turn on the AI voice.", "error");
+    notes.push("add an OpenAI key for the AI voice");
+  }
+  toast(notes.length ? `Preferences saved. ${notes.join(" · ")}.` : "Preferences saved.");
 }
 
 function applyPreferences() {
@@ -124,6 +147,8 @@ function applyPreferences() {
   byId("llm-provider").value = PROVIDERS[state.preferences.llmProvider] ? state.preferences.llmProvider : "";
   byId("llm-remember-key").checked = Boolean(state.preferences.rememberKey);
   syncLlmKeyField();
+  renderTtsControls();
+  syncTtsKeyField();
 }
 
 function llmConfig() {
@@ -223,6 +248,100 @@ async function loadModels() {
   }
 }
 
+function ttsConfig() {
+  if (state.preferences.ttsProvider !== "openai") return null;
+  const { key } = vault.read("openai");
+  if (!key) return null;
+  const model = TTS_MODELS.some((item) => item.id === state.preferences.ttsModel) ? state.preferences.ttsModel : TTS_MODELS[0].id;
+  const voices = voicesForModel(model);
+  const voice = voices.some((item) => item.id === state.preferences.ttsVoice) ? state.preferences.ttsVoice : voices[0].id;
+  return { key, model, voice };
+}
+
+function setTtsStatus(message, tone = "") {
+  const status = byId("tts-status");
+  status.textContent = message;
+  status.classList.toggle("is-error", tone === "error");
+  status.classList.toggle("is-ok", tone === "ok");
+}
+
+function renderTtsControls() {
+  const modelSelect = byId("tts-model");
+  modelSelect.replaceChildren(...TTS_MODELS.map((model) => new Option(model.name, model.id)));
+  modelSelect.value = TTS_MODELS.some((model) => model.id === state.preferences.ttsModel) ? state.preferences.ttsModel : TTS_MODELS[0].id;
+  byId("tts-provider").value = state.preferences.ttsProvider === "openai" ? "openai" : "";
+  renderTtsVoices(state.preferences.ttsVoice);
+}
+
+function renderTtsVoices(preferred = "") {
+  const select = byId("tts-voice");
+  const voices = voicesForModel(byId("tts-model").value);
+  const wanted = preferred || select.value;
+  select.replaceChildren(...voices.map((voice) => new Option(`${voice.name} · ${voice.note}`, voice.id)));
+  select.value = voices.some((voice) => voice.id === wanted) ? wanted : voices[0].id;
+}
+
+function currentOpenAIKey() {
+  if (byId("llm-provider").value === "openai") return byId("llm-api-key").value.trim();
+  return byId("tts-api-key").value.trim();
+}
+
+function syncTtsKeyField() {
+  const ttsOn = byId("tts-provider").value === "openai";
+  const shared = byId("llm-provider").value === "openai";
+  const keyInput = byId("tts-api-key");
+  byId("tts-key-label").classList.toggle("is-hidden", !ttsOn || shared);
+  keyInput.disabled = !ttsOn || shared;
+  byId("tts-model").disabled = !ttsOn;
+  byId("tts-voice").disabled = !ttsOn;
+  byId("tts-preview").disabled = !ttsOn;
+  if (!ttsOn) {
+    setTtsStatus("Browser voice is on. Choose OpenAI to hear a natural voice.");
+    return;
+  }
+  const stored = vault.read("openai");
+  if (!shared) keyInput.value = stored.key;
+  if (shared) setTtsStatus("Using the OpenAI key from AI narration above. Pick a voice and play a sample.");
+  else if (stored.key) setTtsStatus(`OpenAI key ${stored.remembered ? "remembered on this device" : "kept for this tab"}. Pick a voice and play a sample.`);
+  else setTtsStatus("Paste your OpenAI key, pick a voice, then play a sample.");
+}
+
+async function explainProviderFailure(providerId, key, error) {
+  if (error?.code !== "network" || !key) return error?.message || "The request failed.";
+  const provider = PROVIDERS[providerId];
+  const verdict = await llm.verifyKey(providerId, key);
+  if (verdict.code === "network") return error.message;
+  if (!verdict.ok) return verdict.message;
+  return `${provider.name} accepted the key, but this request was refused. ${providerId === "openai" ? "OpenAI hides the reason from browsers; check that the key can use this model or voice." : "Check the model and try again."}`;
+}
+
+async function previewVoice() {
+  const key = currentOpenAIKey();
+  const model = byId("tts-model").value;
+  const voice = byId("tts-voice").value;
+  if (!key) {
+    setTtsStatus("Enter your OpenAI key first.", "error");
+    (byId("llm-provider").value === "openai" ? byId("llm-api-key") : byId("tts-api-key")).focus();
+    return;
+  }
+  const button = byId("tts-preview");
+  button.disabled = true;
+  setTtsStatus(`Asking OpenAI for a ${voice} sample…`);
+  try {
+    stopAudio();
+    const generation = state.audioGeneration;
+    const sample = `Hi there! I'm ${voice}, your RoadTripper narrator. Save your preferences and let's hit the road.`;
+    const url = await synthesizeCached({ key, model, voice }, sample);
+    if (generation !== state.audioGeneration) return;
+    playAudio(url, voice);
+    setTtsStatus(`That is ${voice} on ${model}. Save preferences to use it.`, "ok");
+  } catch (error) {
+    setTtsStatus(await explainProviderFailure("openai", key, error), "error");
+  } finally {
+    button.disabled = byId("tts-provider").value !== "openai";
+  }
+}
+
 function toast(message, isError = false) {
   const item = document.createElement("div");
   item.className = `toast${isError ? " is-error" : ""}`;
@@ -298,7 +417,7 @@ function stopTrip() {
   if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
   state.watchId = null;
   state.running = false;
-  window.speechSynthesis?.cancel();
+  stopAudio();
   byId("voice-status").textContent = "Ready";
   store.stopActiveTrip();
   if (state.trip) state.trip.stoppedAt = new Date().toISOString();
@@ -547,7 +666,7 @@ async function writeWithModel(narration, { place, summary, nearby }) {
     console.error(error);
     if (Date.now() - state.llmErrorAt > 30000) {
       state.llmErrorAt = Date.now();
-      toast(`AI narration failed: ${error.message} Using the built-in story instead.`, true);
+      toast(`AI narration failed: ${await explainProviderFailure(config.providerId, config.key, error)} Using the built-in story instead.`, true);
     }
     return null;
   }
@@ -648,11 +767,81 @@ function chooseVoice() {
     || null;
 }
 
+function stopAudio() {
+  state.audioGeneration += 1;
+  if (state.currentAudio) {
+    state.currentAudio.pause();
+    state.currentAudio = null;
+  }
+  window.speechSynthesis?.cancel();
+}
+
 function speak(script) {
+  stopAudio();
   if (!state.preferences.speakAloud) {
     byId("voice-status").textContent = "Muted";
     return;
   }
+  const config = ttsConfig();
+  if (!config) {
+    speakWithBrowser(script);
+    return;
+  }
+  const generation = state.audioGeneration;
+  byId("voice-status").textContent = `Fetching ${config.voice}…`;
+  synthesizeCached(config, script)
+    .then((url) => {
+      if (generation !== state.audioGeneration) return;
+      playAudio(url, config.voice);
+    })
+    .catch(async (error) => {
+      if (generation !== state.audioGeneration) return;
+      console.error(error);
+      speakWithBrowser(script);
+      if (Date.now() - state.ttsErrorAt > 30000) {
+        state.ttsErrorAt = Date.now();
+        toast(`AI voice failed: ${await explainProviderFailure("openai", config.key, error)} Using the browser voice instead.`, true);
+      }
+    });
+}
+
+async function synthesizeCached(config, text) {
+  const cacheKey = `${config.model}|${config.voice}|${text}`;
+  const cached = state.ttsCache.get(cacheKey);
+  if (cached) return cached;
+  const blob = await speech.synthesize({
+    key: config.key,
+    model: config.model,
+    voice: config.voice,
+    text,
+    instructions: speechInstructions(state.preferences.ageBand, state.preferences.narrationMode),
+  });
+  const url = URL.createObjectURL(blob);
+  state.ttsCache.set(cacheKey, url);
+  if (state.ttsCache.size > 40) {
+    const [oldestKey, oldestUrl] = state.ttsCache.entries().next().value;
+    state.ttsCache.delete(oldestKey);
+    URL.revokeObjectURL(oldestUrl);
+  }
+  return url;
+}
+
+function playAudio(url, voiceName) {
+  const audio = new Audio(url);
+  state.currentAudio = audio;
+  audio.addEventListener("playing", () => { byId("voice-status").textContent = `Speaking · ${voiceName}`; });
+  audio.addEventListener("ended", () => {
+    if (state.currentAudio === audio) state.currentAudio = null;
+    byId("voice-status").textContent = "Ready";
+  });
+  audio.addEventListener("error", () => { byId("voice-status").textContent = "Blocked"; });
+  audio.play().catch(() => {
+    byId("voice-status").textContent = "Blocked";
+    toast("The browser blocked audio playback. Click anywhere on the page, then play the story again.", true);
+  });
+}
+
+function speakWithBrowser(script) {
   if (!("speechSynthesis" in window)) {
     byId("voice-status").textContent = "Unavailable";
     return;
@@ -996,7 +1185,13 @@ function wireEvents() {
     byId("history-dialog").showModal();
   });
   byId("save-settings").addEventListener("click", savePreferences);
-  byId("llm-provider").addEventListener("change", syncLlmKeyField);
+  byId("llm-provider").addEventListener("change", () => {
+    syncLlmKeyField();
+    syncTtsKeyField();
+  });
+  byId("tts-provider").addEventListener("change", syncTtsKeyField);
+  byId("tts-model").addEventListener("change", () => renderTtsVoices());
+  byId("tts-preview").addEventListener("click", previewVoice);
   byId("llm-load-models").addEventListener("click", loadModels);
   byId("llm-api-key").addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== "Return" && event.keyCode !== 13) return;
@@ -1028,7 +1223,7 @@ function init() {
   updateRunningUi();
   renderStories();
   setMode("drive");
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260901").catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260901.2").catch(() => {});
 }
 
 try {
