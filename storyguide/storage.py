@@ -2,7 +2,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 
 def utcnow() -> str:
@@ -231,12 +231,14 @@ class Storage:
             row = self.connection.execute("SELECT * FROM narration_events WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return self._event_row_to_dict(row)
 
-    def get_last_event(self, trip_id: int) -> Optional[Dict]:
+    def get_last_event(self, trip_id: int, trigger_types: Optional[Sequence[str]] = None) -> Optional[Dict]:
+        sql = "SELECT * FROM narration_events WHERE trip_id = ?"
+        params: List = [trip_id]
+        if trigger_types:
+            sql += " AND trigger_type IN (%s)" % ", ".join("?" for _ in trigger_types)
+            params.extend(trigger_types)
         with self.lock:
-            row = self.connection.execute(
-                "SELECT * FROM narration_events WHERE trip_id = ? ORDER BY id DESC LIMIT 1",
-                (trip_id,),
-            ).fetchone()
+            row = self.connection.execute(sql + " ORDER BY id DESC LIMIT 1", params).fetchone()
         return self._event_row_to_dict(row) if row else None
 
     def get_events(self, trip_id: int) -> List[Dict]:

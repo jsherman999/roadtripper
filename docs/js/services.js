@@ -1,4 +1,4 @@
-import { haversineKm, sampleCoordinates, sortTownsAlongRoute } from "./core.js?v=20260901.2";
+import { haversineKm, sampleCoordinates, sortTownsAlongRoute } from "./core.js?v=20261020.1";
 
 const DEFAULT_TIMEOUT_MS = 16000;
 
@@ -206,7 +206,7 @@ export class PublicDataClient {
           population: parsePopulation(element.tags.population),
           kind: element.tags.place || "town",
           source: "OpenStreetMap",
-          status: "ready",
+          status: "pending",
         };
       }).filter(Boolean);
       return sortTownsAlongRoute(towns, coordinates);
@@ -220,7 +220,7 @@ export class PublicDataClient {
           // Continue: a partial itinerary is more useful than dropping the route.
         }
       }
-      return sortTownsAlongRoute(towns.map((town) => ({ ...town, status: "ready" })), coordinates, 12);
+      return sortTownsAlongRoute(towns.map((town) => ({ ...town, status: "pending" })), coordinates, 12);
     }
   }
 }

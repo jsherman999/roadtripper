@@ -1,4 +1,4 @@
-import { makeId, searchEvents } from "./core.js?v=20260901.2";
+import { makeId, searchEvents } from "./core.js?v=20261020.1";
 
 const STORAGE_KEY = "roadtripper-browser-state-v1";
 const MAX_TRIPS = 20;

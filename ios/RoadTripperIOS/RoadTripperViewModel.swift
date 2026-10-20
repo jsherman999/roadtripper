@@ -6,7 +6,9 @@ import SwiftUI
 final class TripViewModel: ObservableObject {
     static let fallbackCoordinate = CLLocationCoordinate2D(latitude: 47.6592, longitude: -92.1985)
 
-    @Published var settings = TripSettings(tripName: "RoadTripper iPhone Trip")
+    @Published var settings = TripSettings()
+    @Published var tripName = "RoadTripper iPhone Trip"
+    @Published private(set) var trip: Trip?
     @Published var isTripRunning = false
     @Published var currentPlace = PlaceSummary(
         name: "Embarrass",
@@ -56,12 +58,14 @@ final class TripViewModel: ObservableObject {
     }
 
     func startTrip() {
+        trip = Trip(name: tripName, startedAt: .now)
         isTripRunning = true
         statusText = "Starting trip"
         locationService.requestStart()
     }
 
     func stopTrip() {
+        trip?.stoppedAt = .now
         isTripRunning = false
         statusText = "Stopped"
         lastNarratedPlaceKey = nil

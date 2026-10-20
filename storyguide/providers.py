@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Dict, Iterable, List, Optional
 
 from storyguide.enrollment import EnrollmentDB
-from storyguide.models import NearbyPlace, PlaceProfile
+from storyguide.models import PlaceProfile, PointOfInterest
 from storyguide.relevance import haversine_km
 
 
@@ -114,22 +114,22 @@ CATALOG = [
     ),
 ]
 
-LANDMARKS = [
-    NearbyPlace(
+POINTS_OF_INTEREST = [
+    PointOfInterest(
         name="Inner Space Cavern",
         latitude=30.6322,
         longitude=-97.6882,
         kind="cave",
         blurb="A cave with dramatic rock formations and guided tours.",
     ),
-    NearbyPlace(
+    PointOfInterest(
         name="Texas State Capitol",
         latitude=30.2747,
         longitude=-97.7403,
         kind="landmark",
         blurb="The large pink granite capitol building in Austin.",
     ),
-    NearbyPlace(
+    PointOfInterest(
         name="Dr Pepper Museum",
         latitude=31.5577,
         longitude=-97.1333,
@@ -140,9 +140,9 @@ LANDMARKS = [
 
 
 class DemoPlaceProvider:
-    def __init__(self, catalog: Optional[Iterable[PlaceProfile]] = None, landmarks: Optional[Iterable[NearbyPlace]] = None):
+    def __init__(self, catalog: Optional[Iterable[PlaceProfile]] = None, points_of_interest: Optional[Iterable[PointOfInterest]] = None):
         self.catalog = list(catalog or CATALOG)
-        self.landmarks = list(landmarks or LANDMARKS)
+        self.points_of_interest = list(points_of_interest or POINTS_OF_INTEREST)
 
     def known_places(self) -> List[PlaceProfile]:
         return [replace(place) for place in self.catalog]
@@ -154,9 +154,9 @@ class DemoPlaceProvider:
         )
         return replace(nearest)
 
-    def nearby_places(self, latitude: float, longitude: float, max_distance_km: float = 20.0) -> List[NearbyPlace]:
+    def nearby_points(self, latitude: float, longitude: float, max_distance_km: float = 20.0) -> List[PointOfInterest]:
         results = []
-        for place in self.landmarks:
+        for place in self.points_of_interest:
             distance = haversine_km(latitude, longitude, place.latitude, place.longitude)
             if distance <= max_distance_km:
                 results.append((distance, place))
@@ -255,7 +255,7 @@ class LivePlaceProvider:
         region = address.get("state") or place.region
         return replace(place, name=name, region=region, latitude=latitude, longitude=longitude, source="live")
 
-    def nearby_places(self, latitude: float, longitude: float, max_distance_km: float = 20.0) -> List[NearbyPlace]:
+    def nearby_points(self, latitude: float, longitude: float, max_distance_km: float = 20.0) -> List[PointOfInterest]:
         radius_m = int(max_distance_km * 1000)
         params = urllib.parse.urlencode(
             {
@@ -273,11 +273,11 @@ class LivePlaceProvider:
             with urllib.request.urlopen(request, timeout=3) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
-            return self.fallback.nearby_places(latitude, longitude, max_distance_km=max_distance_km) if self.allow_demo_fallback else []
+            return self.fallback.nearby_points(latitude, longitude, max_distance_km=max_distance_km) if self.allow_demo_fallback else []
         points = []
         for item in payload.get("query", {}).get("geosearch", []):
             points.append(
-                NearbyPlace(
+                PointOfInterest(
                     name=item.get("title", "Nearby point of interest"),
                     latitude=float(item.get("lat", latitude)),
                     longitude=float(item.get("lon", longitude)),
@@ -285,7 +285,7 @@ class LivePlaceProvider:
                     blurb="A nearby point of interest discovered on the map.",
                 )
             )
-        return points or (self.fallback.nearby_places(latitude, longitude, max_distance_km=max_distance_km) if self.allow_demo_fallback else [])
+        return points or (self.fallback.nearby_points(latitude, longitude, max_distance_km=max_distance_km) if self.allow_demo_fallback else [])
 
     def nearby_towns(
         self,

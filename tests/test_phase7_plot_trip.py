@@ -35,7 +35,7 @@ class Phase7PlotTripTests(unittest.TestCase):
             town_gazetteer=TownGazetteer(data_path="/tmp/missing-roadtripper-towns.json"),
             start_background_jobs=False,
         )
-        trip = service.create_trip("Plot Test", settings_payload={"trip_mode": "plot_trip", "live_providers": False})
+        trip = service.create_trip("Plot Test", settings_payload={"trip_mode": "route", "live_providers": False})
         route = service.create_plotted_route(
             trip["id"],
             {

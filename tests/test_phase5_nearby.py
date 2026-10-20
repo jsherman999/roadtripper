@@ -2,13 +2,13 @@ import os
 import tempfile
 import unittest
 
-from storyguide.route import RouteForecaster
+from storyguide.nearby import NearbyTownRanker
 from storyguide.service import StoryGuideService
 from storyguide.storage import Storage
 
 
-class Phase5RouteTests(unittest.TestCase):
-    def test_route_forecaster_suggests_place_ahead(self):
+class Phase5NearbyTests(unittest.TestCase):
+    def test_ingest_location_queues_nearby_towns(self):
         service = StoryGuideService(storage=Storage(":memory:"))
         trip = service.create_trip("Route Trip")
         service.ingest_location(trip["id"], 30.2672, -97.7431)
@@ -16,14 +16,9 @@ class Phase5RouteTests(unittest.TestCase):
         self.assertTrue(result["nearby_towns"])
         self.assertIn(result["nearby_towns"][0]["name"], {"Georgetown", "Temple", "Waco"})
 
-    def test_best_upcoming_requires_two_points(self):
-        forecaster = RouteForecaster()
-        history = [{"latitude": 30.2672, "longitude": -97.7431}]
-        self.assertIsNone(forecaster.best_upcoming(history, []))
-
     def test_nearby_queue_returns_multiple_candidates(self):
-        forecaster = RouteForecaster()
-        queue = forecaster.nearby_queue(
+        ranker = NearbyTownRanker()
+        queue = ranker.nearby_queue(
             30.2672,
             -97.7431,
             [

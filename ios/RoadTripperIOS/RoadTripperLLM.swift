@@ -56,16 +56,16 @@ struct RoadTripperLLMConfiguration: Equatable {
 struct NarrationLLMContext: Encodable {
     var ageBand: String
     var narrationMode: String
-    var sourceKind: String
-    var sourceName: String
+    var kind: String
+    var placeName: String
     var region: String
     var detail: String
 
     enum CodingKeys: String, CodingKey {
         case ageBand = "age_band"
         case narrationMode = "narration_mode"
-        case sourceKind = "source_kind"
-        case sourceName = "source_name"
+        case kind
+        case placeName = "place_name"
         case region
         case detail
     }

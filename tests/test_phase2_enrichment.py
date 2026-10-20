@@ -18,7 +18,7 @@ class Phase2EnrichmentTests(unittest.TestCase):
         engine = RelevanceEngine()
         provider = DemoPlaceProvider()
         place = provider.reverse_geocode(30.2672, -97.7431)
-        nearby = provider.nearby_places(30.2672, -97.7431)
+        nearby = provider.nearby_points(30.2672, -97.7431)
         last_event = {
             "place_name": "Austin",
             "latitude": 30.2672,

@@ -60,7 +60,7 @@ struct RoadTripperRootView: View {
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.secondary)
 
-                    TextField("Road trip name", text: $viewModel.settings.tripName)
+                    TextField("Road trip name", text: $viewModel.tripName)
                         .textFieldStyle(.plain)
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
                 }
@@ -316,7 +316,7 @@ struct RoadTripperRootView: View {
                             Text(event.script)
                                 .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundStyle(.primary.opacity(0.92))
-                            Text(event.sourceName)
+                            Text(event.placeName)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }

@@ -251,15 +251,18 @@ class TownGazetteer:
 
 
 def distance_to_route_km(latitude: float, longitude: float, route: Sequence[Tuple[float, float]]) -> Tuple[float, float]:
+    """Return (distance from the route in km, fraction of route length travelled at the closest point)."""
     best_distance = float("inf")
-    best_position = 0.0
-    total_segments = max(1, len(route) - 1)
-    for index, (start, end) in enumerate(zip(route, route[1:])):
-        distance = _point_segment_distance_km(latitude, longitude, start, end)
+    best_along_km = 0.0
+    travelled_km = 0.0
+    for start, end in zip(route, route[1:]):
+        segment_km = haversine_km(start[0], start[1], end[0], end[1])
+        distance, fraction = _point_segment_distance_km(latitude, longitude, start, end)
         if distance < best_distance:
             best_distance = distance
-            best_position = index / total_segments
-    return best_distance, best_position
+            best_along_km = travelled_km + fraction * segment_km
+        travelled_km += segment_km
+    return best_distance, (best_along_km / travelled_km if travelled_km else 0.0)
 
 
 def _point_segment_distance_km(
@@ -267,7 +270,8 @@ def _point_segment_distance_km(
     longitude: float,
     start: Tuple[float, float],
     end: Tuple[float, float],
-) -> float:
+) -> Tuple[float, float]:
+    """Return (distance to the segment in km, fraction along the segment of the closest point)."""
     mean_lat = math.radians((start[0] + end[0] + latitude) / 3.0)
     x = longitude * 111.320 * math.cos(mean_lat)
     y = latitude * 110.574
@@ -278,11 +282,11 @@ def _point_segment_distance_km(
     dx = x2 - x1
     dy = y2 - y1
     if dx == 0 and dy == 0:
-        return haversine_km(latitude, longitude, start[0], start[1])
+        return haversine_km(latitude, longitude, start[0], start[1]), 0.0
     t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / ((dx * dx) + (dy * dy))))
     px = x1 + (t * dx)
     py = y1 + (t * dy)
-    return math.hypot(x - px, y - py)
+    return math.hypot(x - px, y - py), t
 
 
 def _normalize_town(raw: Dict) -> Optional[Dict]:

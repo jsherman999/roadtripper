@@ -2,9 +2,11 @@ import CoreLocation
 import Foundation
 import MapKit
 
+// Raw values are the canonical vocabulary shared with the Python and browser
+// clients (see ONTOLOGY.md); they are sent to the language model as-is.
 enum AudienceBand: String, CaseIterable, Identifiable {
     case elementary
-    case earlyElementary
+    case earlyElementary = "early_elementary"
     case adult
 
     var id: String { rawValue }
@@ -23,7 +25,7 @@ enum AudienceBand: String, CaseIterable, Identifiable {
 
 enum NarrationMode: String, CaseIterable, Identifiable {
     case storyteller
-    case quickFacts
+    case quickFacts = "quick"
     case history
 
     var id: String { rawValue }
@@ -40,8 +42,20 @@ enum NarrationMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum NarrationTrigger: String, Hashable {
+    case currentPlace = "current_place"
+    case selectedPlace = "selected_place"
+    case selectedPoint = "selected_point"
+}
+
+struct Trip: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var startedAt: Date
+    var stoppedAt: Date?
+}
+
 struct TripSettings: Equatable {
-    var tripName: String = "Road Trip"
     var audienceBand: AudienceBand = .adult
     var narrationMode: NarrationMode = .storyteller
     var speakAloud: Bool = true
@@ -105,28 +119,34 @@ struct NarrationEvent: Identifiable, Hashable {
     let id = UUID()
     var title: String
     var script: String
+    var trigger: NarrationTrigger
     var timestamp: Date
     var coordinate: CLLocationCoordinate2D
-    var sourceName: String
+    var placeName: String
+    var region: String
 
     static func == (lhs: NarrationEvent, rhs: NarrationEvent) -> Bool {
         lhs.id == rhs.id &&
         lhs.title == rhs.title &&
         lhs.script == rhs.script &&
+        lhs.trigger == rhs.trigger &&
         lhs.timestamp == rhs.timestamp &&
         lhs.coordinate.latitude == rhs.coordinate.latitude &&
         lhs.coordinate.longitude == rhs.coordinate.longitude &&
-        lhs.sourceName == rhs.sourceName
+        lhs.placeName == rhs.placeName &&
+        lhs.region == rhs.region
     }
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(title)
         hasher.combine(script)
+        hasher.combine(trigger)
         hasher.combine(timestamp)
         hasher.combine(coordinate.latitude)
         hasher.combine(coordinate.longitude)
-        hasher.combine(sourceName)
+        hasher.combine(placeName)
+        hasher.combine(region)
     }
 }
 
@@ -175,6 +195,15 @@ enum MapSelectionItem: Identifiable, Hashable {
         }
     }
 
+    var region: String {
+        switch self {
+        case .currentPlace(let place), .nearbyTown(let place):
+            return place.region
+        case .poi:
+            return ""
+        }
+    }
+
     var coordinate: CLLocationCoordinate2D {
         switch self {
         case .currentPlace(let place):
@@ -197,14 +226,12 @@ enum MapSelectionItem: Identifiable, Hashable {
         }
     }
 
-    var kindLabel: String {
+    var trigger: NarrationTrigger {
         switch self {
-        case .currentPlace:
-            return "current_place"
-        case .nearbyTown:
-            return "nearby_town"
+        case .currentPlace, .nearbyTown:
+            return .selectedPlace
         case .poi:
-            return "point_of_interest"
+            return .selectedPoint
         }
     }
 }

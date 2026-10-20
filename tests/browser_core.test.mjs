@@ -37,6 +37,8 @@ test("relevance narrates a new place but throttles a nearby repeat", () => {
   const newPlace = shouldNarrate({ current: { name: "Sun Prairie", region: "Wisconsin", latitude: 43.1836, longitude: -89.2137 }, previous });
   assert.equal(repeat.narrate, false);
   assert.equal(newPlace.narrate, true);
+  assert.equal(repeat.code, "cooldown_distance");
+  assert.equal(newPlace.code, "new_place_or_far_enough");
 });
 
 test("route sampling keeps endpoints and honors its cap", () => {

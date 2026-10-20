@@ -64,6 +64,7 @@ This project includes:
 - LaunchAgent plist: [`com.jay.storyguide.plist`](com.jay.storyguide.plist)
 - Deploy script: [`deploy_storyguide.sh`](deploy_storyguide.sh)
 - LLM env example: [`.env.example`](.env.example)
+- Shared vocabulary: [`ONTOLOGY.md`](ONTOLOGY.md)
 - Product plan: [`ROAD_TRIP_COMMENTARY_APP_PLAN.md`](ROAD_TRIP_COMMENTARY_APP_PLAN.md)
 - Technical spec: [`ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md`](ROAD_TRIP_COMMENTARY_TECHNICAL_SPEC.md)
 - iOS scaffold guide: [`ios/README.md`](ios/README.md)

@@ -26,7 +26,7 @@ def _is_generic_place_description(text: str) -> bool:
 
 
 class NarrationBuilder:
-    def build_current_place_script(self, place, nearby, mode: str = "storyteller", age_band: str = "elementary"):
+    def build_current_place_script(self, place, nearby, mode: str = "storyteller", age_band: str = "adult"):
         if age_band == "adult":
             title = "Now entering %s" % place.name
             bits = ["We are near %s, %s." % (place.name, place.region)]
@@ -74,19 +74,7 @@ class NarrationBuilder:
             "tags": ["current_place", place.region.lower().replace(" ", "_")],
         }
 
-    def build_upcoming_script(self, place_name: str, region: str, distance_km: float, age_band: str = "elementary"):
-        title = "Coming up: %s" % place_name
-        if age_band == "adult":
-            script = "Up ahead in about %.1f kilometers is %s, %s." % (distance_km, place_name, region)
-        else:
-            script = "Coming up in about %.1f kilometers is %s, %s." % (distance_km, place_name, region)
-        return {
-            "title": title,
-            "script": script,
-            "tags": ["upcoming_place", region.lower().replace(" ", "_")],
-        }
-
-    def build_selected_point_script(self, point_name: str, region: str, blurb: str, age_band: str = "elementary"):
+    def build_selected_point_script(self, point_name: str, region: str, blurb: str, age_band: str = "adult"):
         title = "Selected stop: %s" % point_name
         if age_band == "adult":
             script = "%s is a nearby point of interest in %s. %s." % (point_name, region, sanitize_text(blurb))
@@ -95,5 +83,5 @@ class NarrationBuilder:
         return {
             "title": title,
             "script": script,
-            "tags": ["selected_place", region.lower().replace(" ", "_")],
+            "tags": ["selected_point", region.lower().replace(" ", "_")],
         }

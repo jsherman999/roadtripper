@@ -149,10 +149,10 @@ This implementation targets a zero-dependency Python stack so it can run in the 
 - `region`: text
 - `title`: text
 - `script`: text
-- `trigger_type`: `current_place` or `upcoming_place`
+- `trigger_type`: `current_place`, `selected_place`, `selected_point`, or `plot_trip_research` (see [`ONTOLOGY.md`](ONTOLOGY.md))
 - `latitude`: real
 - `longitude`: real
-- `score`: real
+- `score`: real, the relevance score of the place's material (`RelevanceEngine.score_place`)
 - `tags_json`: JSON string
 - `recorded_at`: ISO timestamp
 
@@ -204,7 +204,6 @@ Request:
 {
   "name": "Spring Break Drive",
   "settings": {
-    "kid_mode": true,
     "save_history": true,
     "narration_mode": "storyteller",
     "age_band": "elementary",
@@ -381,9 +380,8 @@ Optional and disabled by default.
 - `tests/test_phase4_journal.py`:
   - History search
   - Markdown export
-- `tests/test_phase5_route.py`:
-  - Upcoming place prediction
-  - Route-aware preview narration
+- `tests/test_phase5_nearby.py`:
+  - Nearby-town queue ranking
 - `tests/test_phase6_reliability.py`:
   - Fallback behavior when live providers fail
   - Cache/demo continuity

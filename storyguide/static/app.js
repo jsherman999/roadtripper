@@ -223,7 +223,7 @@ function ensureMap() {
     plotTowns: L.layerGroup().addTo(state.map),
   };
   state.map.on("click", (event) => {
-    if (state.tripMode === "plot_trip") {
+    if (state.tripMode === "route") {
       addPlotWaypoint(event.latlng.lat, event.latlng.lng);
       return;
     }
@@ -330,7 +330,7 @@ function renderPlotWaypointList() {
       list.appendChild(item);
     });
   }
-  byId("submit-plot-trip").disabled = state.tripMode !== "plot_trip" || state.plotWaypoints.length < 2;
+  byId("submit-plot-trip").disabled = state.tripMode !== "route" || state.plotWaypoints.length < 2;
 }
 
 function renderPlotWaypointMarkers() {
@@ -449,7 +449,7 @@ async function ensurePlotTripCreated() {
     settings: {
       narration_mode: byId("narration-mode").value,
       age_band: byId("age-band").value,
-      trip_mode: "plot_trip",
+      trip_mode: "route",
       save_history: byId("save-history").checked,
       live_providers: byId("data-mode").value === "live",
       llm_model: selectedLlmModel,
@@ -619,7 +619,7 @@ function renderNearbyTowns(towns) {
   list.innerHTML = "";
   if (!towns || !towns.length) {
     setText("upcoming-name", "No nearby towns yet");
-    setText("upcoming-details", state.tripMode === "plan" ? "Click the map to explore places and build your itinerary." : "Drive a little farther to build a nearby-town queue.");
+    setText("upcoming-details", state.tripMode === "explore" ? "Click the map to explore places and build your itinerary." : "Drive a little farther to build a nearby-town queue.");
     return;
   }
   setText("upcoming-name", `${towns.length} nearby towns`);
@@ -706,7 +706,7 @@ async function narrateMapLocation(location) {
         location.kind ? "point" : "town",
         location.blurb || ""
       );
-      if (state.tripMode === "plan") {
+      if (state.tripMode === "explore") {
         addPlanMarker(data.selected_place.latitude, data.selected_place.longitude, data.selected_place.name);
       }
       refreshHistory().catch(() => {});
@@ -815,14 +815,14 @@ async function startTrip() {
   byId("start-trip").disabled = true;
   byId("stop-trip").disabled = false;
   setText("trip-status", `Running (#${state.tripId})`);
-  if (tripMode === "plan") {
+  if (tripMode === "explore") {
     setText("trip-status", `Planning (#${state.tripId})`);
     setText("coords-status", "Plan mode");
     setText("audio-status", "Ready");
     setText("decision-reason", "Plan mode – click the map");
     return;
   }
-  if (tripMode === "plot_trip") {
+  if (tripMode === "route") {
     byId("plot-trip-panel").classList.remove("hidden");
     byId("plot-trip-panel").setAttribute("aria-hidden", "false");
     renderPlotWaypointList();
@@ -954,11 +954,11 @@ async function loadTtsOptions() {
 function updateTripModeHint() {
   const mode = byId("trip-mode").value;
   const hint = byId("trip-hint");
-  byId("plot-trip-panel").classList.toggle("hidden", mode !== "plot_trip");
-  byId("plot-trip-panel").setAttribute("aria-hidden", String(mode !== "plot_trip"));
-  if (mode === "plan") {
+  byId("plot-trip-panel").classList.toggle("hidden", mode !== "route");
+  byId("plot-trip-panel").setAttribute("aria-hidden", String(mode !== "route"));
+  if (mode === "explore") {
     hint.textContent = "Plan mode: no GPS needed. Click locations on the map to build your itinerary.";
-  } else if (mode === "plot_trip") {
+  } else if (mode === "route") {
     hint.textContent = "Plot Trip mode: click multiple map points, then submit to calculate the driving route and research towns along it.";
     renderPlotWaypointList();
   } else {
@@ -1024,7 +1024,7 @@ if ("speechSynthesis" in window) {
 
 (function initPlatformDefaults() {
   const platform = detectPlatform();
-  const defaultMode = platform === "mac" ? "plan" : "drive";
+  const defaultMode = platform === "mac" ? "explore" : "drive";
   state.tripMode = defaultMode;
   byId("trip-mode").value = defaultMode;
   updateTripModeHint();

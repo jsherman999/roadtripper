@@ -222,7 +222,7 @@ def clean_narration(text: str) -> str:
 
 
 def _system_prompt(context: Dict) -> str:
-    audience = context.get("age_band", "elementary")
+    audience = context.get("age_band", "adult")
     if audience == "adult":
         tone = "clear, engaging, and informative for adults"
     elif audience == "early_elementary":

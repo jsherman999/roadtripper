@@ -233,8 +233,8 @@ final class RoadTripperNarrationService: NarrationServiceProtocol {
         let context = NarrationLLMContext(
             ageBand: settings.audienceBand.rawValue,
             narrationMode: settings.narrationMode.rawValue,
-            sourceKind: "current_place",
-            sourceName: place.name,
+            kind: NarrationTrigger.currentPlace.rawValue,
+            placeName: place.name,
             region: place.region,
             detail: place.detail
         )
@@ -246,9 +246,11 @@ final class RoadTripperNarrationService: NarrationServiceProtocol {
         return NarrationEvent(
             title: "Current place: \(place.name)",
             script: finalScript,
+            trigger: .currentPlace,
             timestamp: .now,
             coordinate: place.coordinate,
-            sourceName: place.name
+            placeName: place.name,
+            region: place.region
         )
     }
 
@@ -266,8 +268,8 @@ final class RoadTripperNarrationService: NarrationServiceProtocol {
         let context = NarrationLLMContext(
             ageBand: settings.audienceBand.rawValue,
             narrationMode: settings.narrationMode.rawValue,
-            sourceKind: selection.kindLabel,
-            sourceName: selection.title,
+            kind: selection.trigger.rawValue,
+            placeName: selection.title,
             region: selection.subtitle,
             detail: selection.detail
         )
@@ -279,9 +281,11 @@ final class RoadTripperNarrationService: NarrationServiceProtocol {
         return NarrationEvent(
             title: "Selected: \(selection.title)",
             script: finalScript,
+            trigger: selection.trigger,
             timestamp: .now,
             coordinate: selection.coordinate,
-            sourceName: selection.title
+            placeName: selection.title,
+            region: selection.region
         )
     }
 

@@ -4,12 +4,20 @@ from typing import Dict, Optional
 
 from storyguide.llm import BaseNarrationLLM, build_llm_provider_from_env, build_openai_provider_from_env, clean_narration
 from storyguide.enrollment import EnrollmentDB
-from storyguide.models import PlaceProfile, TripSettings
+from storyguide.models import (
+    LIVE_TRIGGERS,
+    TRIGGER_CURRENT_PLACE,
+    TRIGGER_ROUTE_RESEARCH,
+    TRIGGER_SELECTED_PLACE,
+    TRIGGER_SELECTED_POINT,
+    PlaceProfile,
+    TripSettings,
+)
 from storyguide.narration import NarrationBuilder
+from storyguide.nearby import NearbyTownRanker
 from storyguide.plotting import ResilientRoutingProvider, TownGazetteer, build_routing_provider_from_env
 from storyguide.providers import DemoPlaceProvider, LivePlaceProvider
 from storyguide.relevance import RelevanceEngine
-from storyguide.route import RouteForecaster
 from storyguide.storage import Storage
 from storyguide.tts import BaseTTSProvider, audio_json_payload, build_tts_provider_from_env
 
@@ -22,7 +30,7 @@ class StoryGuideService:
         live_provider: Optional[LivePlaceProvider] = None,
         relevance_engine: Optional[RelevanceEngine] = None,
         narration_builder: Optional[NarrationBuilder] = None,
-        route_forecaster: Optional[RouteForecaster] = None,
+        nearby_ranker: Optional[NearbyTownRanker] = None,
         llm_provider: Optional[BaseNarrationLLM] = None,
         tts_provider: Optional[BaseTTSProvider] = None,
         openai_provider: Optional[BaseNarrationLLM] = None,
@@ -40,7 +48,7 @@ class StoryGuideService:
         )
         self.relevance = relevance_engine or RelevanceEngine()
         self.narration_builder = narration_builder or NarrationBuilder()
-        self.route_forecaster = route_forecaster or RouteForecaster()
+        self.nearby_ranker = nearby_ranker or NearbyTownRanker()
         self.llm_provider = llm_provider or build_llm_provider_from_env()
         self.tts_provider = tts_provider or build_tts_provider_from_env()
         self.openai_provider = openai_provider if openai_provider is not None else build_openai_provider_from_env()
@@ -209,7 +217,7 @@ class StoryGuideService:
         place = provider.enrich(place)
         if town.get("population") and not place.population:
             place = replace(place, population=town["population"])
-        nearby_points = provider.nearby_places(place.latitude, place.longitude)
+        nearby_points = provider.nearby_points(place.latitude, place.longitude)
         narration = self.narration_builder.build_current_place_script(
             place,
             nearby_points,
@@ -221,7 +229,7 @@ class StoryGuideService:
             {
                 "age_band": settings.age_band,
                 "narration_mode": settings.narration_mode,
-                "kind": "plot_trip_research",
+                "kind": TRIGGER_ROUTE_RESEARCH,
                 "place": place.to_dict(),
                 "nearby_points": [point.to_dict() for point in nearby_points],
             },
@@ -235,10 +243,10 @@ class StoryGuideService:
                 region=place.region,
                 title=narration["title"],
                 script=narration["script"],
-                trigger_type="plot_trip_research",
+                trigger_type=TRIGGER_ROUTE_RESEARCH,
                 latitude=place.latitude,
                 longitude=place.longitude,
-                score=0.75,
+                score=self.relevance.score_place(place, nearby_points),
                 tags=narration["tags"] + ["plot_trip", "advance_research"],
             )
         return {
@@ -256,9 +264,9 @@ class StoryGuideService:
         provider = self.live_provider if settings.live_providers else self.demo_provider
         latitude = float(place_payload["latitude"])
         longitude = float(place_payload["longitude"])
-        nearby = provider.nearby_places(latitude, longitude)
+        nearby = provider.nearby_points(latitude, longitude)
         nearby_towns = provider.nearby_towns(latitude, longitude)
-        nearby_queue = self.route_forecaster.nearby_queue(latitude, longitude, nearby_towns, limit=6)
+        nearby_queue = self.nearby_ranker.nearby_queue(latitude, longitude, nearby_towns, limit=6)
         if place_payload.get("kind") and place_payload.get("blurb"):
             region = place_payload.get("region") or provider.reverse_geocode(latitude, longitude).region
             narration = self.narration_builder.build_selected_point_script(
@@ -272,7 +280,7 @@ class StoryGuideService:
                 {
                     "age_band": settings.age_band,
                     "narration_mode": settings.narration_mode,
-                    "kind": "selected_point",
+                    "kind": TRIGGER_SELECTED_POINT,
                     "point_name": place_payload.get("name", "Selected stop"),
                     "region": region,
                     "blurb": place_payload["blurb"],
@@ -281,6 +289,8 @@ class StoryGuideService:
             )
             place_name = place_payload.get("name", "Selected stop")
             place_region = region
+            trigger_type = TRIGGER_SELECTED_POINT
+            score = self.relevance.score_place(PlaceProfile(name=place_name, region=region, known_for=place_payload["blurb"]), nearby)
         else:
             place = provider.reverse_geocode(latitude, longitude)
             place.name = place_payload.get("name", place.name)
@@ -299,7 +309,7 @@ class StoryGuideService:
                 {
                     "age_band": settings.age_band,
                     "narration_mode": settings.narration_mode,
-                    "kind": "selected_place",
+                    "kind": TRIGGER_SELECTED_PLACE,
                     "place": place.to_dict(),
                     "nearby_points": [point.to_dict() for point in nearby],
                 },
@@ -307,16 +317,18 @@ class StoryGuideService:
             )
             place_name = place.name
             place_region = place.region
+            trigger_type = TRIGGER_SELECTED_PLACE
+            score = self.relevance.score_place(place, nearby)
         event = self.storage.add_event(
             trip_id=trip_id,
             place_name=place_name,
             region=place_region,
             title=narration["title"],
             script=narration["script"],
-            trigger_type="selected_place",
+            trigger_type=trigger_type,
             latitude=latitude,
             longitude=longitude,
-            score=0.9,
+            score=score,
             tags=narration["tags"] + ["manual_selection"],
         )
         return {
@@ -348,11 +360,10 @@ class StoryGuideService:
         location = self.storage.add_location(trip_id, latitude, longitude, speed_kph=speed_kph, heading_deg=heading_deg)
         place = provider.reverse_geocode(latitude, longitude)
         place = provider.enrich(place)
-        nearby = provider.nearby_places(latitude, longitude)
-        history = self.storage.recent_locations(trip_id, limit=8)
+        nearby = provider.nearby_points(latitude, longitude)
         nearby_towns = provider.nearby_towns(latitude, longitude)
-        nearby_queue = self.route_forecaster.nearby_queue(latitude, longitude, nearby_towns, limit=6)
-        last_event = self.storage.get_last_event(trip_id)
+        nearby_queue = self.nearby_ranker.nearby_queue(latitude, longitude, nearby_towns, limit=6)
+        last_event = self.storage.get_last_event(trip_id, trigger_types=LIVE_TRIGGERS)
         should_narrate, score, reason = self.relevance.should_narrate(
             place,
             nearby,
@@ -375,7 +386,7 @@ class StoryGuideService:
                 {
                     "age_band": settings.age_band,
                     "narration_mode": settings.narration_mode,
-                    "kind": "current_place",
+                    "kind": TRIGGER_CURRENT_PLACE,
                     "place": place.to_dict(),
                     "nearby_points": [point.to_dict() for point in nearby],
                 },
@@ -388,7 +399,7 @@ class StoryGuideService:
                     region=place.region,
                     title=narration["title"],
                     script=narration["script"],
-                    trigger_type="current_place",
+                    trigger_type=TRIGGER_CURRENT_PLACE,
                     latitude=latitude,
                     longitude=longitude,
                     score=score,

@@ -7,10 +7,10 @@ import {
   haversineKm,
   makeId,
   shouldNarrate,
-} from "./core.js?v=20260901.2";
-import { PublicDataClient } from "./services.js?v=20260901.2";
-import { TripStore } from "./store.js?v=20260901.2";
-import { KeyVault, NarrationClient, PROVIDERS, SpeechClient, TTS_MODELS, groupModels, speechInstructions, voicesForModel } from "./llm.js?v=20260901.2";
+} from "./core.js?v=20261020.1";
+import { PublicDataClient } from "./services.js?v=20261020.1";
+import { TripStore } from "./store.js?v=20261020.1";
+import { KeyVault, NarrationClient, PROVIDERS, SpeechClient, TTS_MODELS, groupModels, speechInstructions, voicesForModel } from "./llm.js?v=20261020.1";
 
 const PREFERENCES_KEY = "roadtripper-browser-preferences-v1";
 const DEFAULT_CENTER = [39.5, -98.35];
@@ -570,7 +570,7 @@ function renderNearby(places) {
   });
 }
 
-async function investigate(coordinates, { manual = false, suppliedPlace = null, suppliedSummary = null } = {}) {
+async function investigate(coordinates, { manual = false, trigger = manual ? "selected_place" : "current_place", suppliedPlace = null, suppliedSummary = null } = {}) {
   const generation = ++state.lookupGeneration;
   setLoading(true, manual ? "Researching this place…" : "Looking up the road ahead…");
   try {
@@ -602,7 +602,7 @@ async function investigate(coordinates, { manual = false, suppliedPlace = null, 
     }
 
     const decision = manual
-      ? { narrate: true, reason: "You selected this place" }
+      ? { narrate: true, code: "manual_selection", reason: "You selected this place" }
       : shouldNarrate({
         current: place,
         previous: state.lastNarrated,
@@ -634,7 +634,7 @@ async function investigate(coordinates, { manual = false, suppliedPlace = null, 
       region: place.region,
       latitude: place.latitude,
       longitude: place.longitude,
-      triggerType: manual ? "selected place" : "road ahead",
+      triggerType: trigger,
       sourceUrl: wiki?.url || "",
       tags: [place.name, place.region, ...(combinedNearby.slice(0, 3).map((item) => item.name))],
     });
@@ -876,7 +876,7 @@ async function narrateKnownPlace(place) {
     updateRunningUi();
   }
   state.map.panTo([place.latitude, place.longitude]);
-  await investigate(place, { manual: true, suppliedPlace: { ...place, region: place.region || "" } });
+  await investigate(place, { manual: true, trigger: "selected_point", suppliedPlace: { ...place, region: place.region || "" } });
 }
 
 function addWaypoint(coordinates) {
@@ -975,7 +975,7 @@ async function buildRoute() {
     byId("itinerary-panel").classList.remove("is-hidden");
     renderItinerary();
     const towns = await api.townsAlongRoute(planned.geometry);
-    state.route.towns = towns.map((town) => ({ ...town, status: "queued", summary: "", sourceUrl: "" }));
+    state.route.towns = towns.map((town) => ({ ...town, status: "pending", summary: "", sourceUrl: "" }));
     store.setRoute(state.route);
     renderRouteTowns();
     renderItinerary();
@@ -995,7 +995,7 @@ async function buildRoute() {
 function renderRouteTowns() {
   state.layers.routeTowns.clearLayers();
   state.route?.towns?.forEach((town) => {
-    const color = town.status === "ready" ? "#4f9a73" : town.status === "failed" ? "#b85b56" : "#d79c40";
+    const color = town.status === "done" ? "#4f9a73" : town.status === "failed" ? "#b85b56" : "#d79c40";
     const marker = L.circleMarker([town.latitude, town.longitude], {
       radius: 6,
       color: "#ffffff",
@@ -1033,7 +1033,7 @@ function renderItinerary() {
     const footer = document.createElement("div");
     footer.className = "stop-footer";
     const status = document.createElement("span");
-    status.textContent = town.status === "ready" ? "Story ready" : town.status === "failed" ? "Basic details" : "Research queued";
+    status.textContent = town.status === "done" ? "Story ready" : town.status === "failed" ? "Basic details" : "Research queued";
     const narrate = document.createElement("button");
     narrate.type = "button";
     narrate.className = "narrate-stop";
@@ -1060,7 +1060,7 @@ async function researchRouteTowns() {
         town.summary = wiki?.extract || `${town.name} is one of the communities along this route.`;
         town.sourceUrl = wiki?.url || "";
         if (wiki?.population && !town.population) town.population = wiki.population;
-        town.status = "ready";
+        town.status = "done";
       } catch {
         town.status = "failed";
       }
@@ -1071,7 +1071,7 @@ async function researchRouteTowns() {
   await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker));
   if (state.route) {
     store.setRoute(state.route);
-    byId("route-status").textContent = `Route ready · ${queue.filter((town) => town.status === "ready").length} town stories gathered.`;
+    byId("route-status").textContent = `Route ready · ${queue.filter((town) => town.status === "done").length} town stories gathered.`;
   }
 }
 
@@ -1083,7 +1083,7 @@ async function narrateRouteTown(town) {
       summary = await api.wikipediaSummary(town);
       town.summary = summary?.extract || "";
       town.sourceUrl = summary?.url || "";
-      town.status = "ready";
+      town.status = "done";
       renderItinerary();
     } finally {
       setLoading(false);
@@ -1223,7 +1223,7 @@ function init() {
   updateRunningUi();
   renderStories();
   setMode("drive");
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20260901.2").catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=20261020.1").catch(() => {});
 }
 
 try {
