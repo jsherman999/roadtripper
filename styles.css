@@ -315,7 +315,7 @@ button:disabled { cursor: not-allowed; filter: none; opacity: 0.38; box-shadow: 
 .itinerary-stop { position: relative; min-height: 170px; padding: 17px; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.025); }
 .itinerary-stop::before { position: absolute; top: 0; bottom: 0; left: 0; width: 3px; content: ""; background: var(--faint); }
 .itinerary-stop.is-researching::before { background: var(--ember); }
-.itinerary-stop.is-ready::before { background: var(--green); }
+.itinerary-stop.is-done::before { background: var(--green); }
 .itinerary-stop.is-failed::before { background: var(--red); }
 .stop-number { display: inline-flex; align-items: center; justify-content: center; min-width: 25px; height: 25px; margin-bottom: 13px; color: var(--ember-ink); border-radius: 50%; background: var(--ember); font-size: 0.66rem; font-weight: 900; }
 .itinerary-stop h3 { margin: 0 0 4px; font-family: Georgia, serif; font-size: 1rem; }

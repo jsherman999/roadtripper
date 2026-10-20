@@ -98,18 +98,19 @@ export function buildNarration({ place, summary = "", nearby = [], mode = "story
 }
 
 export function shouldNarrate({ current, previous, now = Date.now(), minimumMinutes = 4, minimumKm = 5 }) {
-  if (!previous) return { narrate: true, reason: "First stop on this trip" };
+  if (!previous) return { narrate: true, code: "first_event", reason: "First stop on this trip" };
   const newPlace = placeKey(current) !== placeKey(previous.place);
   const elapsedMinutes = Math.max(0, now - Number(previous.timestamp || 0)) / 60000;
   const distanceKm = haversineKm(current, previous.place);
   if (newPlace && (elapsedMinutes >= 1 || distanceKm >= 1.5)) {
-    return { narrate: true, reason: "A new place came into view" };
+    return { narrate: true, code: "new_place_or_far_enough", reason: "A new place came into view" };
   }
   if (elapsedMinutes >= minimumMinutes && distanceKm >= minimumKm) {
-    return { narrate: true, reason: "Far enough from the last story" };
+    return { narrate: true, code: "new_place_or_far_enough", reason: "Far enough from the last story" };
   }
   return {
     narrate: false,
+    code: distanceKm < minimumKm ? "cooldown_distance" : "cooldown_interval",
     reason: `Waiting for ${Math.max(0, minimumKm - distanceKm).toFixed(1)} more km or ${Math.max(0, Math.ceil(minimumMinutes - elapsedMinutes))} min`,
   };
 }
